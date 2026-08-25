@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "source": "nexthopllc.com",
+  "updated_at": "2026-08-25T00:00:00Z",
+  "cookbook": {
+    "NextHop": [
+      {
+        "name": "Pre-cutover capture",
+        "command": "terminal length 0\nshow run\nshow ip route\nshow ip bgp summary",
+        "why": "Archive before a NextHop firewall or DC window"
+      }
+    ],
+    "CCNA": [
+      {
+        "name": "Int brief",
+        "command": "show ip interface brief",
+        "why": "First look: up/up vs admin down"
+      }
+    ]
+  },
+  "runbooks": [
+    {
+      "id": "nexthop-audit",
+      "title": "NextHop policy audit",
+      "steps": [
+        "Export running policy and object groups.",
+        "Run unused-rule and any/any hunt.",
+        "Map NAT and VPN before you touch security rules.",
+        "Deliver findings with owner + change window."
+      ]
+    }
+  ],
+  "lookups": {
+    "ports": [
+      { "port": 3978, "name": "Check Point CPD" },
+      { "port": 443, "name": "PAN / Forti HTTPS" }
+    ]
+  }
+}

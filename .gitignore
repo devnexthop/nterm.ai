@@ -1,0 +1,15 @@
+backend/.venv/
+backend/build/
+backend/dist/
+backend/app/static/
+frontend/node_modules/
+frontend/dist/
+desktop/node_modules/
+desktop/release/
+desktop/engine/
+data/
+__pycache__/
+*.pyc
+.DS_Store
+.env
+*.log

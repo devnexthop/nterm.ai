@@ -1,0 +1,71 @@
+{
+  "name": "nterm",
+  "productName": "NTerm",
+  "version": "0.1.0",
+  "description": "Network engineer terminal — nterm.ai",
+  "author": "NTerm",
+  "homepage": "https://nterm.ai",
+  "main": "main.cjs",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win nsis zip",
+    "dist:mac": "electron-builder --mac dmg zip",
+    "dist:linux": "electron-builder --linux AppImage"
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "ai.nterm.desktop",
+    "productName": "NTerm",
+    "copyright": "Copyright © NTerm",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "engine",
+        "to": "engine",
+        "filter": ["**/*"]
+      }
+    ],
+    "asar": true,
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Network",
+      "icon": "build/icon.png"
+    },
+    "win": {
+      "target": ["nsis", "zip"],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "NTerm"
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.developer-tools",
+      "icon": "build/icon.png",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "title": "NTerm"
+    }
+  }
+}
