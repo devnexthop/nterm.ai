@@ -13,3 +13,27 @@ __pycache__/
 .DS_Store
 .env
 *.log
+
+# ── private: never publish ────────────────────────────────────────────────
+# Competitive research, strategy, roadmaps, internal planning. The repo is
+# PUBLIC — anything below would be readable by competitors and customers.
+resource/
+dev/
+docs/internal/
+*.private.md
+DEVPLAN.md
+ROADMAP-internal.md
+**/*competitive*
+**/*strategy*
+relay-token*
+*.token
+
+# ── not part of the runnable tool: keep out of the public repo ────────────
+# The public repo ships ONLY what is needed to build and run NTerm.
+# Website, deploy tooling, relay infrastructure and internal docs live in a
+# separate private repo. These paths stay on disk so deploys still work.
+site/
+docs/
+relay/
+scripts/deploy-site.sh
+scripts/nginx-*.conf
