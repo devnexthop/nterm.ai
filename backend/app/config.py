@@ -4,13 +4,33 @@ import sys
 
 APP_NAME = "NTerm"
 APP_DOMAIN = "nterm.ai"
-APP_VERSION = "0.1.0"
-
 
 def _bundle_dir() -> Path:
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         return Path(sys._MEIPASS)
     return Path(__file__).resolve().parent
+
+
+def _read_version() -> str:
+    """Single source of truth: the VERSION file at the repo root.
+
+    Falls back to the baked-in default when running from an installed bundle
+    where the repo layout is gone.
+    """
+    for base in (Path(__file__).resolve().parents[2], _bundle_dir()):
+        f = base / "VERSION"
+        if f.exists():
+            v = f.read_text(encoding="utf-8").strip()
+            if v:
+                return v
+    return "0.1.0"
+
+
+APP_VERSION = _read_version()
+
+# Stamped at image build time (docker build --build-arg GIT_SHA=$(git rev-parse --short HEAD)).
+# Without it you cannot tell which commit produced a running container.
+BUILD_SHA = os.environ.get("NTERM_BUILD_SHA", "dev")
 
 
 def _default_data_dir() -> Path:

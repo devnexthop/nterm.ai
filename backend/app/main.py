@@ -19,7 +19,7 @@ from .architect import acl_lines, config_diff, summarize, translate_rule, type7_
 from . import bench_feed, kb, mcp_client
 from .auth import TOKEN, allowed_origins, audit, auth_middleware, check_ws_token
 from . import hostkeys, share
-from .config import APP_DOMAIN, APP_NAME, APP_VERSION, DATA_DIR, STATIC_DIR
+from .config import APP_DOMAIN, APP_NAME, APP_VERSION, BUILD_SHA, DATA_DIR, STATIC_DIR
 from .crypto import decrypt, encrypt
 from .db import Base, SessionLocal, engine, get_db, migrate_schema
 from .device_profiles import PROFILES
@@ -137,7 +137,8 @@ def maybe_save_cred(db: Session, name: str | None, username: str, password: str 
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "name": APP_NAME, "domain": APP_DOMAIN, "version": APP_VERSION}
+    return {"ok": True, "name": APP_NAME, "domain": APP_DOMAIN,
+            "version": APP_VERSION, "build": BUILD_SHA}
 
 
 @app.get("/api/meta")

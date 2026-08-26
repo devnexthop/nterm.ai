@@ -223,7 +223,7 @@ export default function SettingsPage({
           <div className="field">
             <span>Theme</span>
             <select value={theme} onChange={(e) => { setTheme(e.target.value); onSave({ theme: e.target.value }); }}>
-              <optgroup label="NextHop team">
+              <optgroup label="ValeronLabs team">
                 {THEMES.filter((t) => t.id.startsWith("nexthop")).map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
               </optgroup>
               <optgroup label="Classic terminals">
@@ -294,7 +294,7 @@ export default function SettingsPage({
         <div className="card">
           <h3>About NTerm</h3>
           <p>
-            A NextHop LLC product — nterm.ai · nexthopllc.com. Sessions, broadcast, syslog, TFTP, DHCP, analyzers, and a CCIE bench.
+            A ValeronLabs LLC product — nterm.ai. Sessions, broadcast, syslog, TFTP, DHCP, analyzers, and a CCIE bench.
           </p>
           <div className="row">
             <img src="/icon.png" alt="NTerm" style={{ width: 48, height: 48, borderRadius: 10 }} />

@@ -2,8 +2,8 @@
   "name": "nterm",
   "productName": "NTerm",
   "version": "0.1.0",
-  "description": "Network engineer terminal — nterm.ai",
-  "author": "NTerm",
+  "description": "Network engineer terminal \u2014 nterm.ai",
+  "author": "ValeronLabs LLC",
   "homepage": "https://nterm.ai",
   "main": "main.cjs",
   "private": true,
@@ -22,7 +22,7 @@
   "build": {
     "appId": "ai.nterm.desktop",
     "productName": "NTerm",
-    "copyright": "Copyright © NTerm",
+    "copyright": "Copyright \u00a9 2026 ValeronLabs LLC",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "release",
@@ -37,17 +37,24 @@
       {
         "from": "engine",
         "to": "engine",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "asar": true,
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "category": "Network",
       "icon": "build/icon.png"
     },
     "win": {
-      "target": ["nsis", "zip"],
+      "target": [
+        "nsis",
+        "zip"
+      ],
       "icon": "build/icon.png"
     },
     "nsis": {
@@ -58,7 +65,10 @@
       "shortcutName": "NTerm"
     },
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "category": "public.app-category.developer-tools",
       "icon": "build/icon.png",
       "hardenedRuntime": true,
@@ -67,5 +77,6 @@
     "dmg": {
       "title": "NTerm"
     }
-  }
+  },
+  "license": "SEE LICENSE IN LICENSE"
 }

@@ -19,6 +19,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+ARG GIT_SHA=dev
+ENV NTERM_BUILD_SHA=${GIT_SHA}
+
+LABEL org.opencontainers.image.title="NTerm" \
+      org.opencontainers.image.vendor="ValeronLabs LLC" \
+      org.opencontainers.image.source="https://github.com/devnexthop/nterm.ai" \
+      org.opencontainers.image.licenses="LicenseRef-NTerm-Source-Available"
+
+COPY VERSION ./VERSION
 COPY backend/app ./app
 COPY --from=frontend /src/dist ./app/static
 
