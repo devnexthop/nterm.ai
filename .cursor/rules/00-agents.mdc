@@ -1,0 +1,20 @@
+---
+description: Load the canonical project rules. This repo is public - read before writing anything.
+alwaysApply: true
+---
+
+# Read AGENTS.md first
+
+`AGENTS.md` in the repo root is the canonical rules file. Read it before answering or
+changing anything. `CLAUDE.md` is only a pointer to it.
+
+## The one that bites
+
+**This repo is PUBLIC.** Anything committed is readable by competitors and customers,
+permanently — `git rm` does not remove it from history. `.gitignore` excludes `site/`,
+`design/`, `docs/`, `dev/`, `resource/`, `relay/`, tokens and `.env` for that reason. The
+public repo ships only what is needed to build and run NTerm. Before adding a file, ask
+whether a competitor may read it.
+
+`./data` is a credential vault (hosts, usernames, stored credentials, SSH host keys).
+Never commit it, never paste its contents anywhere.
