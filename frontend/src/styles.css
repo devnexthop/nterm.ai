@@ -106,8 +106,15 @@ input:focus, select:focus, textarea:focus {
   grid-template-columns: 260px 1fr 340px;
   min-height: 0;
 }
-.workspace.with-edit { grid-template-columns: 260px 400px 1fr 340px; }
-.workspace.with-edit.no-ai { grid-template-columns: 260px 400px 1fr; }
+/* Hiding a panel must give its space back to the terminal, not leave a gap.
+   Every combination is spelled out: sidebar (260px) x editor (400px) x AI (340px). */
+.workspace.no-ai                     { grid-template-columns: 260px 1fr; }
+.workspace.no-side                   { grid-template-columns: 1fr 340px; }
+.workspace.no-side.no-ai             { grid-template-columns: 1fr; }
+.workspace.with-edit                 { grid-template-columns: 260px 400px 1fr 340px; }
+.workspace.with-edit.no-ai           { grid-template-columns: 260px 400px 1fr; }
+.workspace.with-edit.no-side         { grid-template-columns: 400px 1fr 340px; }
+.workspace.with-edit.no-side.no-ai   { grid-template-columns: 400px 1fr; }
 .hint { color: var(--muted); font-size: 12px; margin: 0 0 10px; }
 .ctx-menu {
   position: fixed; z-index: 40; min-width: 220px;

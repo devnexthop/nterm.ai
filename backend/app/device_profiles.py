@@ -39,6 +39,11 @@ PROFILES = {
         "paging": [],
         "dialect": "Linux shell",
     },
+    "windows": {
+        "label": "Windows / PowerShell",
+        "paging": [],
+        "dialect": "Windows PowerShell",
+    },
 }
 
 

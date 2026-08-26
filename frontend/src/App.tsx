@@ -31,6 +31,7 @@ export default function App() {
   const [active, setActive] = useState<string | null>(null);
   const [layout, setLayout] = useState<Layout>("single");
   const [aiOpen, setAiOpen] = useState(true);
+  const [sideOpen, setSideOpen] = useState(true);
   const [dragTab, setDragTab] = useState<string | null>(null);
   const [broadcast, setBroadcast] = useState("");
   const [scope, setScope] = useState<"selected" | "customer" | "all">("selected");
@@ -67,6 +68,7 @@ export default function App() {
         document.getElementById("broadcast")?.focus();
       }
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "a") { e.preventDefault(); setAiOpen((v) => !v); }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "s") { e.preventDefault(); setSideOpen((v) => !v); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -156,6 +158,7 @@ export default function App() {
     { label: "Merge to single tab", run: () => setLayout("single") },
     { label: "Quad tiles", run: () => setLayout("quad") },
     { label: "Toggle AI", run: () => setAiOpen((v) => !v) },
+    { label: "Toggle sessions sidebar", run: () => setSideOpen((v) => !v) },
   ];
 
   return (
@@ -175,6 +178,10 @@ export default function App() {
             <button className="ghost" onClick={() => setLayout("split")}>Split</button>
             <button className="ghost" onClick={() => setLayout("quad")}>Quad</button>
             <button className="ghost" onClick={() => setSubnetOpen(true)}>Subnet</button>
+            <button className="ghost" onClick={() => setSideOpen((v) => !v)}
+              title={(sideOpen ? "Hide" : "Show") + " sessions  (\u2318\u21e7S)"}>
+              {sideOpen ? "\u2039 Sessions" : "Sessions \u203a"}
+            </button>
             <button className="ghost" onClick={() => setAiOpen((v) => !v)}
               title={(aiOpen ? "Hide" : "Show") + " AI panel  (\u2318\u21e7A)"}>
               {aiOpen ? "Hide AI \u203a" : "\u2039 Show AI"}
@@ -198,8 +205,8 @@ export default function App() {
         />
       )}
       {page === "sessions" && (
-        <div className={`workspace ${aiOpen ? "" : "no-ai"} ${editor ? "with-edit" : ""}`}>
-          <Sidebar
+        <div className={`workspace ${aiOpen ? "" : "no-ai"} ${sideOpen ? "" : "no-side"} ${editor ? "with-edit" : ""}`}>
+          {sideOpen && <Sidebar
             customers={customers}
             onOpen={openSession}
             onNewCustomer={() => setNewCust(true)}
@@ -218,7 +225,7 @@ export default function App() {
               refresh();
             }}
             onQuickConnect={() => setSessForm({})}
-          />
+          />}
           {editor && (
             <EditorDrawer
               title={editor.title}
