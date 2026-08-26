@@ -10,9 +10,12 @@ DEFAULT_BENCH_URL = os.environ.get("NTERM_BENCH_URL", "https://nterm.ai/bench-fe
 
 DEFAULTS = {
     "openai_model": "gpt-4.1-mini",
+    "ai_provider": "openai",
+    "ai_base_url": "",
     "theme": "nexthop_dark",
     "font_size": "14",
     "ai_auto_context": "true",
+    "ai_cache_enabled": "true",
     "bench_api_url": DEFAULT_BENCH_URL,
     "bench_mode": "merge",
 }
@@ -54,3 +57,11 @@ def get_openai_key(db: Session) -> str | None:
 
 def set_openai_key(db: Session, key: str) -> None:
     set_value(db, "openai_api_key_enc", encrypt(key) or "")
+
+
+def get_anthropic_key(db: Session) -> str | None:
+    return decrypt(get_value(db, "ai_anthropic_key_enc"))
+
+
+def set_anthropic_key(db: Session, key: str) -> None:
+    set_value(db, "ai_anthropic_key_enc", encrypt(key) or "")

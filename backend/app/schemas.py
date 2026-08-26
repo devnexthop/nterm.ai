@@ -29,6 +29,9 @@ class SessionIn(BaseModel):
     notes: str = ""
     logging_enabled: bool = True
     post_login: str = ""
+    credential_id: int | None = None
+    baud: int = 9600
+    save_as_credential: str | None = None
 
 
 class SessionOut(BaseModel):
@@ -47,6 +50,8 @@ class SessionOut(BaseModel):
     notes: str
     logging_enabled: bool
     post_login: str
+    credential_id: int | None = None
+    baud: int = 9600
     created_at: datetime
 
 
@@ -65,11 +70,18 @@ class SessionUpdate(BaseModel):
     logging_enabled: bool | None = None
     post_login: str | None = None
     customer_id: int | None = None
+    credential_id: int | None = None
+    baud: int | None = None
+    save_as_credential: str | None = None
 
 
 class SettingsOut(BaseModel):
     openai_configured: bool
     openai_model: str
+    ai_provider: str = "openai"
+    ai_base_url: str = ""
+    anthropic_configured: bool = False
+    ai_cache_enabled: bool = True
     theme: str
     font_size: int
     ai_auto_context: bool
@@ -81,6 +93,10 @@ class SettingsOut(BaseModel):
 class SettingsIn(BaseModel):
     openai_api_key: str | None = None
     openai_model: str | None = None
+    ai_provider: str | None = None
+    ai_base_url: str | None = None
+    anthropic_api_key: str | None = None
+    ai_cache_enabled: bool | None = None
     theme: str | None = None
     font_size: int | None = None
     ai_auto_context: bool | None = None
@@ -171,3 +187,62 @@ class SummarizeIn(BaseModel):
 class TranslateIn(BaseModel):
     line: str
     target: str = "paloalto"
+
+
+class CredentialIn(BaseModel):
+    name: str
+    username: str = ""
+    password: str | None = None
+    enable_password: str | None = None
+    device_type: str = ""
+    notes: str = ""
+
+
+class AiModelsIn(BaseModel):
+    api_key: str | None = None
+    provider: str | None = None
+    base_url: str | None = None
+
+
+class AiModelOut(BaseModel):
+    id: str
+    label: str
+
+
+class AiModelsOut(BaseModel):
+    provider: str
+    base_url: str = ""
+    models: list[AiModelOut] = []
+    error: str | None = None
+
+
+class AiActIn(BaseModel):
+    message: str
+    session_id: int | None = None
+    device_type: str = "cisco_ios"
+    customer_id: int | None = None
+    transcript: str = ""
+
+
+class AiDecisionIn(BaseModel):
+    event_id: int
+    decision: str
+
+
+class KbIn(BaseModel):
+    title: str
+    body: str
+    source: str = "paste"
+    vendor: str = ""
+    customer_id: int | None = None
+
+
+class NameIn(BaseModel):
+    name: str = ""
+
+
+class SnippetIn(BaseModel):
+    name: str
+    command: str
+    device_types: list[str] = []
+    id: str | None = None

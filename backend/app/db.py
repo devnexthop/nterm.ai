@@ -20,3 +20,19 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def migrate_schema() -> None:
+    """SQLite create_all does not add columns to existing tables."""
+    from sqlalchemy import text
+
+    with engine.begin() as conn:
+        cols = {row[1] for row in conn.execute(text("PRAGMA table_info(sessions)"))}
+        if cols and "credential_id" not in cols:
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN credential_id INTEGER"))
+        if cols and "baud" not in cols:
+            conn.execute(text("ALTER TABLE sessions ADD COLUMN baud INTEGER DEFAULT 9600"))
+        try:
+            conn.execute(text("CREATE VIRTUAL TABLE IF NOT EXISTS kb_fts USING fts5(title, body, doc_id UNINDEXED)"))
+        except Exception:
+            pass

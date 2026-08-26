@@ -1,29 +1,36 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { OpenTab } from "../types";
 import { getBuffer, sendToTab } from "./TerminalPane";
 
-export default function AiPanel({ tab }: { tab?: OpenTab }) {
+export default function AiPanel({
+  tab,
+  ask,
+}: {
+  tab?: OpenTab;
+  ask?: { text: string; nonce: number } | null;
+}) {
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<{ role: "user" | "bot"; text: string }[]>([
     {
       role: "bot",
-      text: "Paste an OpenAI key in Settings to go live. I can already suggest built-in snippets and read this session once you ask.",
+      text: "Highlight output in the session, right-click, and ask what it is. Or type here. Paste an API key in Settings for a live model.",
     },
   ]);
+  const lastNonce = useRef(0);
 
-  async function send() {
-    if (!msg.trim()) return;
-    const text = msg;
-    setMsg("");
-    setLog((l) => [...l, { role: "user", text }]);
+  async function send(text?: string) {
+    const payload = (text ?? msg).trim();
+    if (!payload) return;
+    if (!text) setMsg("");
+    setLog((l) => [...l, { role: "user", text: payload }]);
     setBusy(true);
     try {
       const res = await api<{ reply: string }>("/api/ai/chat", {
         method: "POST",
         body: JSON.stringify({
-          message: text,
+          message: payload,
           session_id: tab?.session.id,
           transcript: tab ? getBuffer(tab.tabId) : "",
           device_type: tab?.session.device_type || "generic",
@@ -37,6 +44,12 @@ export default function AiPanel({ tab }: { tab?: OpenTab }) {
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (!ask?.text || ask.nonce === lastNonce.current) return;
+    lastNonce.current = ask.nonce;
+    send(ask.text);
+  }, [ask?.nonce]);
 
   function sendLastCommand() {
     const last = [...log].reverse().find((x) => x.role === "bot");
@@ -60,12 +73,12 @@ export default function AiPanel({ tab }: { tab?: OpenTab }) {
         <textarea
           value={msg}
           onChange={(e) => setMsg(e.target.value)}
-          placeholder="Why is Gi0/2 down? Draft a hardening snippet…"
+          placeholder="Ask about the selection, or type a question…"
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send();
           }}
         />
-        <button className="primary" onClick={send} disabled={busy}>{busy ? "…" : "Ask"}</button>
+        <button className="primary" onClick={() => send()} disabled={busy}>{busy ? "…" : "Ask"}</button>
       </div>
     </aside>
   );

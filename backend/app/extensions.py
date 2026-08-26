@@ -89,6 +89,22 @@ BUILTIN = [
         },
     },
     {
+        "id": "juniper-essentials",
+        "name": "Juniper essentials",
+        "kind": "snippets",
+        "enabled": True,
+        "description": "One-click operational commands for Junos.",
+        "manifest": {
+            "device_types": ["juniper"],
+            "snippets": [
+                {"name": "Interfaces", "command": "show interfaces terse"},
+                {"name": "Routes", "command": "show route"},
+                {"name": "Config", "command": "show configuration"},
+                {"name": "No more", "command": "set cli screen-length 0"},
+            ],
+        },
+    },
+    {
         "id": "cisco-config-audit",
         "name": "Cisco config analyzer",
         "kind": "analyzer",
@@ -144,15 +160,45 @@ def sync_builtin(db: Session) -> None:
             row.builtin = True
         else:
             db.add(Extension(**spec, builtin=True))
+    ensure_user_pack(db)
     db.commit()
 
 
-def enabled_snippets(db: Session, device_type: str | None = None) -> list[dict]:
+USER_PACK = "user-snippets"
+
+
+def ensure_user_pack(db: Session) -> Extension:
+    row = db.get(Extension, USER_PACK)
+    if not row:
+        row = Extension(
+            id=USER_PACK,
+            name="My chips",
+            kind="snippets",
+            enabled=True,
+            builtin=False,
+            description="Your one-click commands for Cisco, Palo Alto, Fortinet, and anything else.",
+            manifest={"snippets": []},
+        )
+        db.add(row)
+        db.flush()
+    return row
+
+
+def enabled_snippets(db: Session, device_type: str | None = None, pack: str | None = None) -> list[dict]:
     out = []
     for ext in db.query(Extension).filter(Extension.enabled.is_(True), Extension.kind == "snippets"):
-        types = ext.manifest.get("device_types") or []
-        if device_type and types and device_type not in types:
+        if pack and pack not in ("auto", "all") and ext.id != pack:
             continue
-        for snip in ext.manifest.get("snippets", []):
-            out.append({**snip, "extension": ext.id})
+        for snip in ext.manifest.get("snippets") or []:
+            types = snip.get("device_types") or ext.manifest.get("device_types") or []
+            if pack in (None, "auto") and device_type and types and device_type not in types:
+                continue
+            out.append({
+                "id": snip.get("id") or "",
+                "name": snip.get("name") or "",
+                "command": snip.get("command") or "",
+                "device_types": types,
+                "extension": ext.id,
+                "editable": not ext.builtin,
+            })
     return out

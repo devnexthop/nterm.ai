@@ -8,7 +8,7 @@ export type DeviceType =
   | "juniper"
   | "linux";
 
-export type SessionKind = "ssh" | "local" | "simulator";
+export type SessionKind = "ssh" | "telnet" | "serial" | "local" | "simulator";
 
 export interface SavedSession {
   id: number;
@@ -26,6 +26,19 @@ export interface SavedSession {
   notes: string;
   logging_enabled: boolean;
   post_login: string;
+  credential_id: number | null;
+  baud: number;
+  created_at: string;
+}
+
+export interface Credential {
+  id: number;
+  name: string;
+  username: string;
+  device_type: string;
+  notes: string;
+  has_password: boolean;
+  has_enable_password: boolean;
   created_at: string;
 }
 
@@ -46,9 +59,25 @@ export interface OpenTab {
   selected: boolean;
 }
 
+export interface AiModelOption {
+  id: string;
+  label: string;
+}
+
+export interface AiModelsResponse {
+  provider: string;
+  base_url: string;
+  models: AiModelOption[];
+  error?: string | null;
+}
+
 export interface Settings {
   openai_configured: boolean;
   openai_model: string;
+  ai_provider: string;
+  ai_base_url: string;
+  anthropic_configured: boolean;
+  ai_cache_enabled: boolean;
   theme: string;
   font_size: number;
   ai_auto_context: boolean;
@@ -86,7 +115,65 @@ export interface McpServer {
 }
 
 export interface Snippet {
+  id?: string;
   name: string;
   command: string;
   extension?: string;
+  editable?: boolean;
+  device_types?: string[];
+}
+
+export interface SnippetPack {
+  id: string;
+  name: string;
+}
+
+export interface AiPreview {
+  event_id: number;
+  tool: string;
+  args: Record<string, unknown>;
+  commands: string[];
+  summary: string;
+  risk: string;
+  dialect: string;
+  cache_hit?: boolean;
+  offline?: boolean;
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+}
+
+export interface AiEvent {
+  id: number;
+  created_at: string;
+  customer_id: number | null;
+  session_id: number | null;
+  source: string;
+  prompt: string;
+  tool_name: string;
+  commands_preview: string;
+  decision: string;
+  provider: string;
+  model: string;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  total_tokens: number | null;
+  cache_hit: boolean;
+}
+
+export interface TokenUsage {
+  today: number;
+  days_7: number;
+  all: number;
+  events: number;
+}
+
+export interface MenuItem {
+  label: string;
+  danger?: boolean;
+  disabled?: boolean;
+  run?: () => void;
+}
+
+export interface SerialPort {
+  device: string;
+  description: string;
 }

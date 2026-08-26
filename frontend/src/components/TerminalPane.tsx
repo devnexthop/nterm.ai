@@ -1,14 +1,16 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
-import type { OpenTab } from "../types";
+import type { MenuItem, OpenTab } from "../types";
 import { wsUrl } from "../api";
 import type { ChromeTheme } from "../themes";
+import ContextMenu from "./ContextMenu";
 
 const sockets = new Map<string, WebSocket>();
 const buffers = new Map<string, string>();
+const terms = new Map<string, Terminal>();
 
 export function getBuffer(tabId: string) {
   return buffers.get(tabId) || "";
@@ -23,14 +25,19 @@ export default function TerminalPane({
   theme,
   fontSize,
   active,
+  onEditText,
+  onAskAi,
 }: {
   tab: OpenTab;
   theme: ChromeTheme;
   fontSize: number;
   active: boolean;
+  onEditText?: (text: string, title: string) => void;
+  onAskAi?: (text: string) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
 
   useEffect(() => {
     if (!host.current) return;
@@ -40,6 +47,7 @@ export default function TerminalPane({
       fontSize,
       theme: theme.term,
       scrollback: 8000,
+      rightClickSelectsWord: false,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -47,6 +55,7 @@ export default function TerminalPane({
     term.open(host.current);
     fit.fit();
     termRef.current = term;
+    terms.set(tab.tabId, term);
 
     const ws = new WebSocket(wsUrl(tab.tabId, tab.session.id));
     sockets.set(tab.tabId, ws);
@@ -79,6 +88,7 @@ export default function TerminalPane({
       ro.disconnect();
       ws.close();
       sockets.delete(tab.tabId);
+      terms.delete(tab.tabId);
       term.dispose();
     };
   }, [tab.tabId, tab.session.id]);
@@ -92,5 +102,70 @@ export default function TerminalPane({
     if (active) termRef.current?.focus();
   }, [active]);
 
-  return <div className="term-host" ref={host} />;
+  function openMenu(e: MouseEvent) {
+    e.preventDefault();
+    const term = termRef.current;
+    const selected = term?.getSelection() || "";
+    const items: MenuItem[] = [
+      {
+        label: "Copy",
+        disabled: !selected,
+        run: () => selected && navigator.clipboard.writeText(selected),
+      },
+      {
+        label: "Paste",
+        run: async () => {
+          try {
+            const text = await navigator.clipboard.readText();
+            if (text) sendToTab(tab.tabId, text);
+          } catch {
+            /* clipboard denied */
+          }
+        },
+      },
+      {
+        label: "Select all",
+        run: () => term?.selectAll(),
+      },
+      { label: "—" },
+      {
+        label: "Edit in editor",
+        disabled: !selected,
+        run: () => onEditText?.(selected, `${tab.session.name} selection`),
+      },
+      {
+        label: "Ask AI: what is this?",
+        disabled: !selected,
+        run: () => onAskAi?.(`What is this output?\n\n${selected}`),
+      },
+      {
+        label: "Ask AI: explain / next step",
+        disabled: !selected,
+        run: () => onAskAi?.(`Explain this and tell me the next command if something is wrong.\n\n${selected}`),
+      },
+      {
+        label: "Open buffer in editor",
+        run: () => onEditText?.(getBuffer(tab.tabId), `${tab.session.name} buffer`),
+      },
+      {
+        label: "Save selection as file",
+        disabled: !selected,
+        run: () => {
+          const blob = new Blob([selected], { type: "text/plain" });
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = `${tab.session.name}.txt`;
+          a.click();
+        },
+      },
+    ];
+    setMenu({ x: e.clientX, y: e.clientY, items });
+  }
+
+  return (
+    <>
+      <div className="term-host" ref={host} onContextMenu={openMenu} />
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
+    </>
+  );
 }

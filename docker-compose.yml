@@ -3,7 +3,7 @@ services:
     build: .
     image: nterm:local
     ports:
-      - "8787:8787"
+      - "127.0.0.1:8787:8787"
     environment:
       NTERM_DATA_DIR: /data
       NTERM_BENCH_URL: https://nterm.ai/bench-feed.json

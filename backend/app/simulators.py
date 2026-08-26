@@ -131,6 +131,14 @@ class DeviceSimulator:
                 "Loopback0              1.1.1.1         YES NVRAM  up                    up\r\n"
                 + self.prompt()
             )
+        if "ip route" in low or low in ("sh ip ro", "show ip route"):
+            return (
+                "Gateway of last resort is not set\r\n"
+                "      10.0.0.0/8 is variably subnetted, 2 subnets, 2 masks\r\n"
+                "C        10.10.10.0/24 is directly connected, GigabitEthernet0/0\r\n"
+                "C        10.20.20.0/24 is directly connected, GigabitEthernet0/1\r\n"
+                + self.prompt()
+            )
         if "cdp" in low:
             return (
                 "Capability Codes: R - Router, S - Switch\r\n"
@@ -138,6 +146,17 @@ class DeviceSimulator:
                 "CORE-SW          Gig 0/1           140        S           9300      Gig 1/0/1\r\n"
                 + self.prompt()
             )
+        if self.config_mode and (
+            low.startswith("interface ")
+            or low.startswith("ip address")
+            or low.startswith("no shutdown")
+            or low.startswith("ip dhcp pool")
+            or low.startswith("network ")
+            or low.startswith("default-router")
+            or low.startswith("dns-server")
+            or low.startswith("ip route")
+        ):
+            return self.prompt()
         if "running-config" in low or low in ("sh run", "show run"):
             return (
                 "Building configuration...\r\n"
@@ -175,9 +194,12 @@ class DeviceSimulator:
                 "  show system info\r\n  show interface all\r\n"
                 "  show routing route\r\n  configure\r\n" + self.prompt()
             )
-        if low == "configure":
-            self.config_mode = True
-            return self.prompt().replace(">", "#")
+        if self.config_mode or low == "configure" or low.startswith("set ") or low == "commit":
+            if low == "configure":
+                self.config_mode = True
+            if low == "commit" or low == "exit":
+                self.config_mode = False
+            return self.prompt()
         if "system info" in low:
             return (
                 f"hostname: {self.hostname}\r\n"
@@ -197,6 +219,8 @@ class DeviceSimulator:
 
     def _forti(self, line: str) -> str:
         low = line.lower()
+        if low.startswith("config ") or low.startswith("edit ") or low.startswith("set ") or low in ("next", "end"):
+            return self.prompt()
         if low in ("?", "help"):
             return "  get system status\r\n  get system interface\r\n  config system console\r\n" + self.prompt()
         if "system status" in low:
