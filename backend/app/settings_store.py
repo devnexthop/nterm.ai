@@ -1,13 +1,20 @@
-from sqlalchemy.orm import Session
-from .models import AppSetting
-from .crypto import encrypt, decrypt
 import json
+import os
+
+from sqlalchemy.orm import Session
+
+from .crypto import decrypt, encrypt
+from .models import AppSetting
+
+DEFAULT_BENCH_URL = os.environ.get("NTERM_BENCH_URL", "https://nterm.ai/bench-feed.json")
 
 DEFAULTS = {
     "openai_model": "gpt-4.1-mini",
     "theme": "nexthop_dark",
     "font_size": "14",
     "ai_auto_context": "true",
+    "bench_api_url": DEFAULT_BENCH_URL,
+    "bench_mode": "merge",
 }
 
 

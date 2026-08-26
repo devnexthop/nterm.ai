@@ -66,14 +66,12 @@ export default function SettingsPage({
         <div className="card">
           <h3>Engineer bench feed</h3>
           <p>
-            Point NTerm at your server. Host JSON at something like
-            {" "}<code>https://nexthopllc.com/api/nterm/bench.json</code> or
-            {" "}<code>https://nterm.ai/bench-feed.json</code>.
-            Contract: <code>/api/architect/example-feed</code>.
+            Cookbooks and runbooks come from <code>https://nterm.ai/bench-feed.json</code>.
+            Host <code>site/bench-feed.json</code> on that domain. Contract: <code>/api/architect/example-feed</code>.
           </p>
           <div className="field">
             <span>Feed URL</span>
-            <input value={benchUrl} onChange={(e) => setBenchUrl(e.target.value)} placeholder="https://nexthopllc.com/api/nterm/bench.json" />
+            <input value={benchUrl} onChange={(e) => setBenchUrl(e.target.value)} placeholder="https://nterm.ai/bench-feed.json" />
           </div>
           <div className="field">
             <span>Mode</span>

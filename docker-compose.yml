@@ -1,16 +1,12 @@
 services:
-  relay:
+  nterm:
     build: .
+    image: nterm:local
     ports:
       - "8787:8787"
-      - "514:514/udp"
-      - "69:69/udp"
-      - "67:67/udp"
     environment:
-      RELAY_DATA_DIR: /data
+      NTERM_DATA_DIR: /data
+      NTERM_BENCH_URL: https://nterm.ai/bench-feed.json
     volumes:
       - ./data:/data
-    cap_add:
-      - NET_BIND_SERVICE
-      - NET_ADMIN
     restart: unless-stopped

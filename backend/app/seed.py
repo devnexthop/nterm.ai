@@ -90,7 +90,7 @@ def seed(db: Session) -> None:
         sample.parent.mkdir(parents=True, exist_ok=True)
         sample.write_text(
             "hostname ZTP-SWITCH\n"
-            "ip domain-name lab.relay\n"
+            "ip domain-name lab.nterm\n"
             "logging host 10.88.0.1\n"
             "end\n",
             encoding="utf-8",
@@ -98,6 +98,6 @@ def seed(db: Session) -> None:
     readme = DATA_DIR / "tftp" / "README.txt"
     if not readme.exists():
         readme.write_text(
-            "Drop IOS images and configs here. Devices can `copy tftp://<relay-ip>/file flash:`.\n",
+            "Drop IOS images and configs here. Devices can `copy tftp://<nterm-ip>/file flash:`.\n",
             encoding="utf-8",
         )

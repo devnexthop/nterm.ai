@@ -496,7 +496,7 @@ def architect_status(db: Session = Depends(get_db)):
 
 @app.get("/api/architect/example-feed")
 def architect_example_feed():
-    """Contract your server should return. Host this JSON at nexthopllc.com or nterm.ai."""
+    """Contract nterm.ai/bench-feed.json should return."""
     return bench_feed.local_feed()
 
 
