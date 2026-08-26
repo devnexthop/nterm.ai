@@ -510,3 +510,39 @@ input:focus, select:focus, textarea:focus {
   font-family: var(--mono); font-size: 11.5px; color: var(--muted);
 }
 .broadcast-open:hover { color: var(--text); border-color: var(--accent2); }
+
+/* Share control. Idle it is quiet; live it is unmistakable — a session someone
+   else is watching should never be something you forget about. */
+.share-btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: 7px;
+  padding: 6px 12px;
+  color: var(--muted);
+  font-weight: 600;
+  transition: background .16s ease, color .16s ease, border-color .16s ease;
+}
+.share-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent2);
+  background: color-mix(in srgb, var(--accent2) 12%, transparent);
+}
+.share-btn:disabled { opacity: .45; cursor: default; }
+
+.share-btn.on {
+  color: #1a1205;
+  border-color: transparent;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--pending) 92%, #fff),
+    var(--pending));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--pending) 45%, transparent),
+              0 0 14px -2px color-mix(in srgb, var(--pending) 55%, transparent);
+  animation: share-btn-live 2.6s ease-in-out infinite;
+}
+@keyframes share-btn-live {
+  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--pending) 40%, transparent),
+                         0 0 10px -3px color-mix(in srgb, var(--pending) 45%, transparent); }
+  50%      { box-shadow: 0 0 0 1px color-mix(in srgb, var(--pending) 60%, transparent),
+                         0 0 18px -2px color-mix(in srgb, var(--pending) 70%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) { .share-btn.on { animation: none; } }

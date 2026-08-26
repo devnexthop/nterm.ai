@@ -232,7 +232,7 @@ export default function App() {
               title={(snipOpen ? "Hide" : "Show") + " quick command buttons"}>
               {snipOpen ? "Quick \u25be" : "Quick \u25b8"}
             </button>
-            <button className="ghost" onClick={toggleShare} disabled={!activeTab || shareBusy}
+            <button className={`share-btn ${shareUrl ? "on" : ""}`} onClick={toggleShare} disabled={!activeTab || shareBusy}
               title={shareUrl ? "Stop sharing this session" : "Share this session read-only"}>
               {shareBusy ? "…" : shareUrl ? "Sharing \u25cf" : "Share"}
             </button>

@@ -22,6 +22,7 @@ export default function SettingsPage({
     openai_api_key?: string;
     anthropic_api_key?: string;
     bench_api_key?: string;
+    relay_token?: string;
   }) => Promise<void>;
 }) {
   const [provider, setProvider] = useState(settings?.ai_provider || "openai");
@@ -37,6 +38,7 @@ export default function SettingsPage({
   const [benchMode, setBenchMode] = useState(settings?.bench_mode || "merge");
   const [benchKey, setBenchKey] = useState("");
   const [benchMsg, setBenchMsg] = useState("");
+  const [relayToken, setRelayToken] = useState("");
   const [mcp, setMcp] = useState<McpServer[]>([]);
   const [mcpForm, setMcpForm] = useState({ name: "", transport: "sse", url: "", command: "" });
   const [saved, setSaved] = useState("");
@@ -292,6 +294,35 @@ export default function SettingsPage({
           }}>Add MCP</button>
         </div>
         <div className="card">
+          <h3>Session sharing</h3>
+          <p>
+            Share a live session read-only at sessions.nterm.ai. Viewers watch; input is
+            never accepted from the browser. Known secret patterns are redacted on the
+            relay before anyone sees them — but that is pattern matching, not a
+            guarantee, so treat a shared session as visible.
+            {settings?.relay_configured ? " A relay token is stored." : " No relay token yet — the Share button stays disabled until one is saved."}
+          </p>
+          <div className="field">
+            <span>Relay token</span>
+            <input
+              type="password"
+              value={relayToken}
+              onChange={(e) => setRelayToken(e.target.value)}
+              placeholder={settings?.relay_configured ? "stored — paste a new one to replace" : "paste the relay token"}
+            />
+          </div>
+          <div className="row">
+            <button className="primary" onClick={() => onSave({ relay_token: relayToken })} disabled={!relayToken.trim()}>
+              Save relay token
+            </button>
+            <a className="ghost" href="https://sessions.nterm.ai/" target="_blank" rel="noopener"
+               style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", padding: "6px 10px" }}>
+              Open relay
+            </a>
+          </div>
+        </div>
+
+        <div className="card">
           <h3>About NTerm</h3>
           <p>
             A ValeronLabs LLC product — nterm.ai. Sessions, broadcast, syslog, TFTP, DHCP, analyzers, and a CCIE bench.
@@ -300,7 +331,10 @@ export default function SettingsPage({
             <img src="/icon.png" alt="NTerm" style={{ width: 48, height: 48, borderRadius: 10 }} />
             <div>
               <strong>NTerm</strong>
-              <div style={{ color: "var(--muted)" }}>nterm.ai · v0.1.0</div>
+              <div style={{ color: "var(--muted)" }}>
+                nterm.ai · v{settings?.version || "0.1.0"}
+                {settings?.build && settings.build !== "dev" ? ` · build ${settings.build}` : ""}
+              </div>
             </div>
           </div>
           <div className="row" style={{ marginTop: 10 }}>

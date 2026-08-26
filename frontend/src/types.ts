@@ -84,6 +84,9 @@ export interface Settings {
   bench_api_url: string;
   bench_mode: string;
   bench_key_configured: boolean;
+  relay_configured: boolean;
+  version?: string;
+  build?: string;
 }
 
 export interface Finding {

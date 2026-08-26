@@ -377,6 +377,8 @@ def get_settings(db: Session = Depends(get_db)):
         "ai_cache_enabled": get_value(db, "ai_cache_enabled", "true") == "true",
         "theme": get_value(db, "theme", "nexthop_dark"),
         "relay_configured": bool(get_value(db, "relay_token", "") or os.environ.get("NTERM_RELAY_TOKEN")),
+        "version": APP_VERSION,
+        "build": BUILD_SHA,
         "font_size": int(get_value(db, "font_size", "14")),
         "ai_auto_context": get_value(db, "ai_auto_context", "true") == "true",
         "bench_api_url": bench_feed.bench_url(db),
