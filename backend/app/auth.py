@@ -8,8 +8,13 @@ requires a per-install token.
 
 The token is generated once, stored 0600 in the data dir, and injected into
 index.html when the SPA is served. Same-origin JS can read it; a cross-origin
-page cannot read the HTML response once CORS is restricted, so it cannot learn
-the token.
+page cannot read that HTML once CORS is restricted, so a malicious website
+cannot learn the token.
+
+That protects against a browser attacker, NOT against a direct network client:
+"/" is not guarded, so anything that can reach the port can fetch the page and
+read the token out of the meta tag. The port must therefore stay bound to
+loopback — see the note in docker-compose.lab.yml.
 """
 from __future__ import annotations
 
@@ -20,7 +25,8 @@ import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import HTTPException, Request, WebSocket
+from fastapi import Request, WebSocket
+from fastapi.responses import JSONResponse
 
 from .config import DATA_DIR
 
@@ -91,16 +97,23 @@ def _present(request: Request) -> str | None:
     return request.query_params.get("token")
 
 
-async def require_token(request: Request) -> None:
-    """FastAPI dependency guarding every /api route."""
-    if AUTH_DISABLED:
-        return
-    path = request.url.path
-    if not _is_guarded(path):
-        return
-    if not _valid(_present(request)):
-        audit("auth.denied", path=path, ip=request.client.host if request.client else "?")
-        raise HTTPException(401, "Missing or invalid NTerm token")
+async def auth_middleware(request: Request, call_next):
+    """Guard the data plane.
+
+    This is middleware rather than an app-level dependency on purpose. A
+    dependency declared on the FastAPI app is applied to WebSocket routes too,
+    and a function typed `(request: Request)` then receives a WebSocket and
+    raises TypeError before the handler runs — which broke every session type.
+    Middleware only ever sees HTTP; WebSockets are gated by check_ws_token().
+    """
+    if not AUTH_DISABLED and _is_guarded(request.url.path):
+        if not _valid(_present(request)):
+            audit("auth.denied", path=request.url.path,
+                  ip=request.client.host if request.client else "?")
+            return JSONResponse(
+                {"detail": "Missing or invalid NTerm token"}, status_code=401
+            )
+    return await call_next(request)
 
 
 async def check_ws_token(ws: WebSocket) -> bool:

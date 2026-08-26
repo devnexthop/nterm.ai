@@ -3,7 +3,10 @@
 services:
   nterm:
     ports:
-      - "8787:8787"
+      # 8787 is deliberately NOT re-published here. Compose appends ports from
+      # an override, and "8787:8787" would bind 0.0.0.0 and silently undo the
+      # loopback binding in the base file, exposing the credential API to the
+      # whole network. The base 127.0.0.1:8787:8787 is inherited.
       - "514:514/udp"
       - "69:69/udp"
       - "67:67/udp"

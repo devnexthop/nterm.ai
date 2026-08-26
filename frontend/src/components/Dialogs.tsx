@@ -35,7 +35,7 @@ export function Palette({
   useEffect(() => { setI(0); }, [q, open]);
   if (!open) return null;
   return (
-    <div className="modal-back" onClick={onClose}>
+    <div className="palette-back" onClick={onClose}>
       <div className="palette" onClick={(e) => e.stopPropagation()}>
         <input
           autoFocus

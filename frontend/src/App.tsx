@@ -21,6 +21,26 @@ function uid() {
   return crypto.randomUUID();
 }
 
+/** Bottom-bar visibility, remembered per browser. Each bar costs terminal
+ *  height, so the choice should survive a reload. */
+function usePref(key: string, fallback: boolean): [boolean, (v: boolean | ((p: boolean) => boolean)) => void] {
+  const [val, setVal] = useState<boolean>(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw === null ? fallback : raw === "1";
+    } catch {
+      return fallback;
+    }
+  });
+  const set = (v: boolean | ((p: boolean) => boolean)) =>
+    setVal((prev) => {
+      const next = typeof v === "function" ? (v as (p: boolean) => boolean)(prev) : v;
+      try { localStorage.setItem(key, next ? "1" : "0"); } catch {}
+      return next;
+    });
+  return [val, set];
+}
+
 export default function App() {
   const [page, setPage] = useState<Page>("sessions");
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -32,6 +52,29 @@ export default function App() {
   const [layout, setLayout] = useState<Layout>("single");
   const [aiOpen, setAiOpen] = useState(true);
   const [sideOpen, setSideOpen] = useState(true);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [bcastOpen, setBcastOpen] = usePref("nterm.bar.broadcast", false);
+  const [snipOpen, setSnipOpen] = usePref("nterm.bar.snippets", false);
+  const [doOpen, setDoOpen] = usePref("nterm.bar.do", true);
+
+  async function toggleShare() {
+    if (!activeTab) return;
+    setShareBusy(true);
+    try {
+      if (shareUrl) {
+        await api(`/api/share/${activeTab.tabId}`, { method: "DELETE" });
+        setShareUrl(null);
+      } else {
+        const r = await api<{ url: string }>(`/api/share/${activeTab.tabId}`, { method: "POST" });
+        setShareUrl(r.url);
+      }
+    } catch (e: any) {
+      window.alert(e.message || String(e));
+    } finally {
+      setShareBusy(false);
+    }
+  }
   const [dragTab, setDragTab] = useState<string | null>(null);
   const [broadcast, setBroadcast] = useState("");
   const [scope, setScope] = useState<"selected" | "customer" | "all">("selected");
@@ -159,6 +202,9 @@ export default function App() {
     { label: "Quad tiles", run: () => setLayout("quad") },
     { label: "Toggle AI", run: () => setAiOpen((v) => !v) },
     { label: "Toggle sessions sidebar", run: () => setSideOpen((v) => !v) },
+    { label: "Toggle broadcast bar", run: () => setBcastOpen((v) => !v) },
+    { label: "Toggle AI Do bar", run: () => setDoOpen((v) => !v) },
+    { label: "Toggle quick buttons", run: () => setSnipOpen((v) => !v) },
   ];
 
   return (
@@ -178,6 +224,18 @@ export default function App() {
             <button className="ghost" onClick={() => setLayout("split")}>Split</button>
             <button className="ghost" onClick={() => setLayout("quad")}>Quad</button>
             <button className="ghost" onClick={() => setSubnetOpen(true)}>Subnet</button>
+            <button className="ghost" onClick={() => setDoOpen((v) => !v)}
+              title={(doOpen ? "Hide" : "Show") + " the AI Do bar"}>
+              {doOpen ? "AI bar \u25be" : "AI bar \u25b8"}
+            </button>
+            <button className="ghost" onClick={() => setSnipOpen((v) => !v)}
+              title={(snipOpen ? "Hide" : "Show") + " quick command buttons"}>
+              {snipOpen ? "Quick \u25be" : "Quick \u25b8"}
+            </button>
+            <button className="ghost" onClick={toggleShare} disabled={!activeTab || shareBusy}
+              title={shareUrl ? "Stop sharing this session" : "Share this session read-only"}>
+              {shareBusy ? "…" : shareUrl ? "Sharing \u25cf" : "Share"}
+            </button>
             <button className="ghost" onClick={() => setSideOpen((v) => !v)}
               title={(sideOpen ? "Hide" : "Show") + " sessions  (\u2318\u21e7S)"}>
               {sideOpen ? "\u2039 Sessions" : "Sessions \u203a"}
@@ -296,13 +354,23 @@ export default function App() {
                 ))}
               </div>
             )}
-            <DoBar
+            {shareUrl && (
+              <div className="share-banner">
+                <span className="share-dot" />
+                <strong>SHARING</strong>
+                <span className="share-note">read-only · anyone with the link can watch this session</span>
+                <code>{shareUrl}</code>
+                <button className="ghost" onClick={() => navigator.clipboard?.writeText(shareUrl)}>Copy</button>
+                <button className="ghost" onClick={toggleShare} disabled={shareBusy}>Stop</button>
+              </div>
+            )}
+            {doOpen && <DoBar
               tab={activeTab}
               usage={usage}
               onUsage={loadUsage}
               onEdit={(text, title) => setEditor({ text, title })}
-            />
-            <SnippetBar
+            />}
+            {snipOpen && <SnippetBar
               snippets={deviceSnips}
               pack={snipPack}
               onPack={setSnipPack}
@@ -314,7 +382,8 @@ export default function App() {
                 await api(`/api/snippets/${s.id}`, { method: "DELETE" });
                 refresh();
               }}
-            />
+            />}
+            {bcastOpen ? (
             <div className="broadcast">
               <select value={scope} onChange={(e) => setScope(e.target.value as any)}>
                 <option value="selected">Selected tabs</option>
@@ -329,7 +398,14 @@ export default function App() {
                 onKeyDown={(e) => { if (e.key === "Enter") sendBroadcast(); }}
               />
               <button className="primary" onClick={sendBroadcast}>Send</button>
+              <button className="ghost" onClick={() => setBcastOpen(false)} title="Hide broadcast">\u00d7</button>
             </div>
+            ) : (
+              <button className="broadcast-open ghost" onClick={() => setBcastOpen(true)}
+                title="Send one command to several sessions at once">
+                Broadcast \u2026
+              </button>
+            )}
             {subnetOpen && <SubnetOverlay onClose={() => setSubnetOpen(false)} />}
           </section>
           {aiOpen && <AiPanel tab={activeTab} ask={aiAsk} />}

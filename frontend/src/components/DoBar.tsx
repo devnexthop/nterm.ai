@@ -63,7 +63,15 @@ export default function DoBar({
   return (
     <div className="dobar">
       <div className="dobar-row">
-        <span className="dobar-label">Do</span>
+        <span className="dobar-label">
+          <svg className="dobar-spark" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"
+               fill="none" stroke="currentColor" strokeWidth="1.6"
+               strokeLinecap="round" strokeLinejoin="round">
+            <path className="spark-lg" d="M12 3.2 13.6 9.1 19.5 10.7 13.6 12.3 12 18.2 10.4 12.3 4.5 10.7 10.4 9.1Z" />
+            <path className="spark-sm" d="M18.4 15.6 19 17.6 21 18.2 19 18.8 18.4 20.8 17.8 18.8 15.8 18.2 17.8 17.6Z" />
+          </svg>
+          <span>Do</span>
+        </span>
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}

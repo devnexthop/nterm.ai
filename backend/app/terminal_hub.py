@@ -17,7 +17,7 @@ from .config import DATA_DIR
 from .crypto import decrypt
 from .device_profiles import PROFILES, SSH_ALGORITHMS
 from .llm.act import decrypt_session_secrets
-from . import hostkeys
+from . import hostkeys, share
 from .auth import audit
 from .models import SavedSession, SessionLog
 from .simulators import DeviceSimulator
@@ -384,6 +384,9 @@ class TerminalHub:
         if not data:
             return
         tab.write_log(data)
+        sh = share.get(tab.tab_id)
+        if sh:
+            sh.push(data)          # never raises, never blocks the session
         await tab.send_json({"type": "output", "data": data})
 
     async def close(self, tab_id: str, db: Session | None = None):

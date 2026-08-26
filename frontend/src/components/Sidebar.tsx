@@ -48,9 +48,7 @@ export default function Sidebar({
 
   return (
     <aside className="sidebar">
-      <div className="side-head">
-        Customers
-        <span className="row">
+      <div className="side-head">Sessions<span className="row">
           <button className="ghost" onClick={onQuickConnect}>Quick</button>
           <button className="ghost" onClick={onNewCustomer}>+ New</button>
         </span>

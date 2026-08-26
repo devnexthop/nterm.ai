@@ -103,6 +103,7 @@ class SettingsIn(BaseModel):
     bench_api_url: str | None = None
     bench_mode: str | None = None
     bench_api_key: str | None = None
+    relay_token: str | None = None
 
 
 class McpIn(BaseModel):

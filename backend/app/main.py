@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,8 +17,8 @@ from .ai_service import build_messages, chat, offline_reply
 from .analyzers import run_analyzers
 from .architect import acl_lines, config_diff, summarize, translate_rule, type7_decode, type7_encode
 from . import bench_feed, kb, mcp_client
-from .auth import TOKEN, allowed_origins, audit, check_ws_token, require_token
-from . import hostkeys
+from .auth import TOKEN, allowed_origins, audit, auth_middleware, check_ws_token
+from . import hostkeys, share
 from .config import APP_DOMAIN, APP_NAME, APP_VERSION, DATA_DIR, STATIC_DIR
 from .crypto import decrypt, encrypt
 from .db import Base, SessionLocal, engine, get_db, migrate_schema
@@ -65,7 +66,7 @@ migrate_schema()
 with SessionLocal() as db:
     seed(db)
 
-app = FastAPI(title=APP_NAME, version=APP_VERSION, dependencies=[Depends(require_token)])
+app = FastAPI(title=APP_NAME, version=APP_VERSION)
 # Restricted to this app's own origin (plus the Vite dev server when NTERM_DEV=1).
 # A credential-owning service on a local port must not accept arbitrary origins:
 # with allow_origins=["*"] any site the operator visits could read the session
@@ -77,6 +78,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-NTerm-Token"],
 )
+app.middleware("http")(auth_middleware)
 app.include_router(mcp_router, prefix="/mcp")
 
 
@@ -373,6 +375,7 @@ def get_settings(db: Session = Depends(get_db)):
         "ai_base_url": get_value(db, "ai_base_url", ""),
         "ai_cache_enabled": get_value(db, "ai_cache_enabled", "true") == "true",
         "theme": get_value(db, "theme", "nexthop_dark"),
+        "relay_configured": bool(get_value(db, "relay_token", "") or os.environ.get("NTERM_RELAY_TOKEN")),
         "font_size": int(get_value(db, "font_size", "14")),
         "ai_auto_context": get_value(db, "ai_auto_context", "true") == "true",
         "bench_api_url": bench_feed.bench_url(db),
@@ -401,6 +404,8 @@ def put_settings(body: SettingsIn, db: Session = Depends(get_db)):
         set_value(db, "font_size", str(body.font_size))
     if body.ai_auto_context is not None:
         set_value(db, "ai_auto_context", "true" if body.ai_auto_context else "false")
+    if body.relay_token is not None:
+        set_value(db, "relay_token", body.relay_token.strip())
     bench_feed.save_config(db, body.bench_api_url, body.bench_mode, body.bench_api_key)
     return get_settings(db)
 
@@ -932,6 +937,45 @@ async def terminal_ws(ws: WebSocket, tab_id: str, session_id: int):
         await hub.close(tab_id, db)
     finally:
         db.close()
+
+
+@app.post("/api/share/{tab_id}")
+async def start_share(tab_id: str, db: Session = Depends(get_db)):
+    """Begin sharing a live tab read-only at sessions.nterm.ai."""
+    if share.get(tab_id):
+        sh = share.SHARES[tab_id]
+        return {"share_id": sh.share_id, "url": sh.url}
+    token = get_value(db, "relay_token", "") or os.environ.get("NTERM_RELAY_TOKEN", "")
+    if not token:
+        raise HTTPException(400, "Set the relay token in Settings first")
+    tab = hub.get(tab_id)
+    if not tab:
+        raise HTTPException(404, "No live session on that tab")
+    row = db.get(SavedSession, tab.session_id)
+    sh = share.Share(tab_id, (row.name if row else "session"), token)
+    try:
+        await sh.start()
+    except Exception as exc:
+        raise HTTPException(502, f"Relay refused: {exc}")
+    share.SHARES[tab_id] = sh
+    audit("share.started", tab_id=tab_id, share_id=sh.share_id)
+    return {"share_id": sh.share_id, "url": sh.url}
+
+
+@app.delete("/api/share/{tab_id}")
+async def stop_share(tab_id: str):
+    sh = share.SHARES.pop(tab_id, None)
+    if sh:
+        await sh.stop()
+        audit("share.stopped", tab_id=tab_id)
+    return {"ok": True}
+
+
+@app.get("/api/share/{tab_id}")
+def share_status(tab_id: str):
+    sh = share.get(tab_id)
+    return {"active": bool(sh), "url": sh.url if sh else None,
+            "share_id": sh.share_id if sh else None}
 
 
 @app.get("/api/hostkeys")
