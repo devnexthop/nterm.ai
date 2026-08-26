@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nterm.ai — AI terminal for network engineers</title>
+<meta name="description" content="Ask a question about a live network device in plain English. Get an answer that cites the config lines behind it, and vendor-correct syntax you can paste. Cisco, Palo Alto, Fortinet.">
+<link rel="canonical" href="https://nterm.ai/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://nterm.ai/">
+<meta property="og:title" content="nterm.ai — AI terminal for network engineers">
+<meta property="og:description" content="Your network's configuration, finally legible. Cisco, Palo Alto, Fortinet.">
+<meta name="theme-color" content="#14211c">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2314211c'/%3E%3Cpath d='M8 11l5 5-5 5M17 21h7' stroke='%237dd3a0' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Libre+Franklin:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --bg:#fdfcfa; --ink:#1a1a18; --muted:#4a4741; --faint:#7a766e;
+    --rule:#e3e0da; --accent:#1e5f4f; --accent-soft:#b8ccc4;
+    --panel:#f7f5f1; --term:#0b0f0d; --chrome:#16211c;
+    --green:#7dd3a0; --amber:#e8b96b; --dim:#5f7169; --term-fg:#d8e4dc;
+    --serif:'Newsreader',Georgia,serif;
+    --sans:'Libre Franklin',system-ui,-apple-system,sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --pad:52px;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+       font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:900px;margin:0 auto}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{color:#123c31}
+  h1,h2{font-family:var(--serif);font-weight:500;letter-spacing:-0.018em;margin:0}
+
+  /* nav */
+  .nav{display:flex;align-items:center;justify-content:space-between;
+       padding:22px var(--pad);border-bottom:1px solid var(--rule);gap:16px}
+  .logo{font-family:var(--serif);font-size:24px;font-weight:600;letter-spacing:-0.01em;color:var(--ink)}
+  .logo span{color:var(--accent)}
+  .navlinks{display:flex;gap:26px;font-size:13px;font-weight:500;color:#55524c;align-items:center}
+  .navlinks a{color:#55524c}
+  .navlinks a:hover{color:var(--ink)}
+  .navcta{background:var(--chrome);color:var(--term-fg);padding:9px 18px;border-radius:3px;
+          font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+  .navcta:hover{color:#fff;background:#0e1714}
+
+  /* hero */
+  .hero{padding:60px var(--pad) 0}
+  .eyebrow{font-size:12px;font-weight:600;letter-spacing:.1em;color:var(--accent);margin-bottom:18px}
+  h1{font-size:clamp(32px,6.2vw,50px);line-height:1.1;margin-bottom:20px;max-width:16ch;text-wrap:pretty}
+  .lede{font-size:clamp(16px,2.2vw,17px);color:var(--muted);max-width:62ch;margin:0 0 28px}
+  .ctas{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  .install{display:inline-flex;align-items:center;gap:14px;background:var(--chrome);color:var(--term-fg);
+           padding:15px 20px;border-radius:4px;font-family:var(--mono);font-size:14px;border:0;cursor:pointer;
+           box-shadow:0 6px 18px -8px rgba(20,33,28,.45);white-space:nowrap}
+  .install:hover{background:#0e1714}
+  .install .dollar{color:var(--green)}
+  .install svg{flex-shrink:0;opacity:.75}
+  .ghost{font-size:14px;font-weight:600;color:var(--accent);border-bottom:1px solid var(--accent-soft);padding-bottom:2px}
+
+  /* terminal */
+  .termwrap{margin:44px var(--pad) 0;border-radius:5px;overflow:hidden;
+            box-shadow:0 18px 44px -18px rgba(20,33,28,.42),0 2px 6px rgba(20,33,28,.1)}
+  .termbar{display:flex;gap:7px;padding:12px 16px;background:var(--chrome);align-items:center;
+           border-bottom:1px solid #26332d}
+  .dot{width:10px;height:10px;border-radius:50%;background:#3a4640;display:inline-block}
+  .termtitle{margin-left:12px;color:#7f9187;font-family:var(--mono);font-size:11px}
+  .term{background:var(--term);padding:24px 26px;overflow-x:auto}
+  .term pre{margin:0;font-family:var(--mono);font-size:13px;line-height:1.8;color:var(--term-fg)}
+  .g{color:var(--green)} .d{color:var(--dim)} .a{color:var(--amber)} .s{color:#9aaba1}
+  .caption{margin:14px var(--pad) 0;font-size:12.5px;color:var(--faint);font-style:italic}
+
+  /* capabilities */
+  .section{margin:52px var(--pad) 0}
+  h2{font-size:clamp(24px,4vw,30px);letter-spacing:-0.012em;margin-bottom:26px}
+  .row{display:flex;gap:26px;padding:22px 0;border-top:1px solid var(--rule);align-items:flex-start}
+  .row:last-child{border-bottom:1px solid var(--rule)}
+  .flag{font-family:var(--mono);font-size:12.5px;color:var(--accent);width:128px;flex-shrink:0;padding-top:3px}
+  .rowtitle{font-size:16px;font-weight:600;margin-bottom:6px}
+  .rowbody{font-size:14px;color:var(--muted);max-width:64ch}
+
+  /* audit */
+  .split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:40px;
+         margin:52px var(--pad) 0;align-items:start}
+  .card{border:1px solid var(--rule);border-radius:4px;background:var(--panel);padding:24px}
+  .cardhead{font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--faint);margin-bottom:16px}
+  .stat{display:flex;justify-content:space-between;align-items:baseline;
+        border-bottom:1px solid var(--rule);padding-bottom:11px;margin-bottom:13px}
+  .stat:last-child{border-bottom:0;padding-bottom:0;margin-bottom:0}
+  .stat span:first-child{font-size:13px;color:var(--muted)}
+  .num{font-family:var(--serif);font-size:22px;font-weight:500}
+  .num.warn{color:#a3542c}
+
+  /* quote */
+  .quote{margin:52px var(--pad) 0;border-left:3px solid var(--accent);padding:4px 0 4px 24px}
+  .quote p{font-family:var(--serif);font-size:clamp(20px,3.4vw,25px);line-height:1.42;
+           font-weight:400;color:#2a2823;margin:0;text-wrap:pretty}
+  .attrib{font-size:13px;color:var(--faint);margin-top:12px}
+
+  /* cta */
+  .closing{margin:52px var(--pad) 0;background:#14211c;color:var(--bg);border-radius:5px;padding:40px}
+  .closing h2{color:var(--bg);margin-bottom:12px}
+  .closing p{font-size:14.5px;color:#a8b5af;margin:0 0 26px;max-width:52ch}
+  .closing .install{background:var(--bg);color:#14211c}
+  .closing .install:hover{background:#fff}
+  .closing .install .dollar{color:var(--accent)}
+  .closing .ghost{color:var(--term-fg);border-bottom-color:#4a5a52}
+  .closing .ghost:hover{color:#fff}
+
+  /* footer */
+  footer{margin:40px var(--pad) 0;padding:22px 0 44px;border-top:1px solid var(--rule);
+         display:flex;justify-content:space-between;align-items:baseline;gap:20px;flex-wrap:wrap}
+  .flinks{display:flex;gap:24px;font-size:12.5px;color:var(--faint);flex-wrap:wrap}
+  .flinks a{color:var(--faint)}
+  .flinks a:hover{color:var(--ink)}
+
+  .copied{font-family:var(--mono);font-size:12px;color:var(--accent)}
+
+  /* responsive */
+  @media (max-width:720px){
+    :root{--pad:24px}
+    .navlinks a{display:none}
+    .hero{padding-top:44px}
+    .termwrap{margin-left:0;margin-right:0;border-radius:0}
+    .term{padding:20px 18px}
+    .term pre{font-size:11.5px}
+    .caption{margin-left:var(--pad);margin-right:var(--pad)}
+    .row{flex-direction:column;gap:8px}
+    .flag{width:auto;padding-top:0}
+    .split{grid-template-columns:1fr;gap:28px}
+    .closing{padding:28px}
+    footer{flex-direction:column;gap:14px}
+  }
+  @media (prefers-reduced-motion:no-preference){
+    .install{transition:background .15s ease}
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <nav class="nav">
+    <a class="logo" href="/">nterm<span>.</span>ai</a>
+    <div class="navlinks">
+      <a href="#platform">Platform</a>
+      <a href="#security">Security</a>
+      <a href="https://api.nterm.ai/">API</a>
+      <a class="navcta" href="#install">Get nterm</a>
+    </div>
+  </nav>
+
+  <header class="hero" id="platform">
+    <div class="eyebrow">AI TERMINAL FOR NETWORK ENGINEERS</div>
+    <h1>Your network's configuration, finally legible.</h1>
+    <p class="lede">Ask a question about a live device in plain English. Get an answer that cites the config lines behind it — and vendor-correct syntax you can actually paste. Cisco, Palo Alto, Fortinet.</p>
+    <div class="ctas" id="install">
+      <button class="install" type="button" data-copy="brew install nterm">
+        <span class="dollar">$</span>
+        <span>brew install nterm</span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="9" y="9" width="12" height="12" rx="2"/>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg>
+      </button>
+      <a class="ghost" href="mailto:hello@nterm.ai?subject=nterm%20demo%20request">Request a demo</a>
+    </div>
+  </header>
+
+  <div class="termwrap">
+    <div class="termbar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="termtitle">nterm — core-sw-01</span>
+    </div>
+    <div class="term">
+<pre><span class="g">$</span> nterm ask core-sw-01
+<span class="d">&gt;</span> why can't vlan 340 reach the firewall?
+
+<span class="d">reading running-config … 4,812 lines</span>
+<span class="d">tracing vlan 340 → trunk → firewall path</span>
+
+VLAN 340 is defined and active <span class="d">(line 118)</span>, but the
+trunk toward the firewall on <span class="a">Gi1/0/47</span> does not
+carry it — allowed list is <span class="a">10,20,100-115,300-338</span>
+<span class="d">(line 3402)</span>.
+
+<span class="s">Traffic is switched locally but never egresses toward</span>
+<span class="s">the firewall, so return routing is never consulted.</span>
+
+<span class="d">─ suggested change ──────────────────────────────</span>
+
+<span class="g">interface GigabitEthernet1/0/47</span>
+<span class="g"> switchport trunk allowed vlan add 340</span>
+
+<span class="d">diff against running-config before commit? [y/N]</span></pre>
+    </div>
+  </div>
+  <p class="caption">Illustrative session. Every suggested change is diffed against the running config before anything is applied.</p>
+
+  <section class="section">
+    <h2>Three things it does well.</h2>
+
+    <div class="row">
+      <div class="flag">--explain</div>
+      <div>
+        <div class="rowtitle">Reads before it writes</div>
+        <div class="rowbody">Ask what any rule, route or policy actually does. Answers cite the lines they came from, so you can check the work instead of trusting it.</div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="flag">--translate</div>
+      <div>
+        <div class="rowtitle">Vendor-native output</div>
+        <div class="rowbody">Move policy between platforms and get an explicit list of what has no equivalent — the part every migration tool quietly skips.</div>
+      </div>
+    </div>
+
+    <div class="row" id="security">
+      <div class="flag">--offline</div>
+      <div>
+        <div class="rowtitle">Runs where the data is</div>
+        <div class="rowbody">Deploy self-hosted, including air-gapped, so device configuration stays inside your network — which is the only way it gets approved in the environments this was built for.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="split">
+    <div>
+      <h2>Point it at a policy you inherited.</h2>
+      <p class="rowbody">Most firewall rulebases have been edited by people who left years ago. nterm reads the whole thing and tells you what is dead, what is redundant, and what is quietly far more permissive than anyone intended.</p>
+    </div>
+    <div class="card">
+      <div class="cardhead">POLICY REVIEW — EXAMPLE OUTPUT</div>
+      <div class="stat"><span>Shadowed rules</span><span class="num">31</span></div>
+      <div class="stat"><span>Unused objects</span><span class="num">248</span></div>
+      <div class="stat"><span>Overly permissive</span><span class="num warn">12</span></div>
+      <div class="stat"><span>Devices in scope</span><span class="num">6</span></div>
+    </div>
+  </section>
+
+  <div class="quote">
+    <p>Most config tools were built by people who have never had to justify a change window at 2am.</p>
+    <div class="attrib">NextHop LLC — multi-vendor firewall and routing migrations</div>
+  </div>
+
+  <section class="closing">
+    <h2>See it against your own config.</h2>
+    <p>A working session against one of your live device configs, run self-hosted in your environment.</p>
+    <div class="ctas">
+      <button class="install" type="button" data-copy="brew install nterm">
+        <span class="dollar">$</span>
+        <span>brew install nterm</span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="9" y="9" width="12" height="12" rx="2"/>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg>
+      </button>
+      <a class="ghost" href="mailto:hello@nterm.ai?subject=nterm%20demo%20request">Request a demo</a>
+    </div>
+  </section>
+
+  <footer>
+    <div class="logo" style="font-size:17px">nterm<span>.</span>ai</div>
+    <div class="flinks">
+      <a href="https://api.nterm.ai/">API</a>
+      <a href="https://license.nterm.ai/">Licensing</a>
+      <a href="mailto:hello@nterm.ai">Contact</a>
+      <span>© 2026 NextHop LLC</span>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+document.querySelectorAll('.install').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var text = btn.getAttribute('data-copy');
+    var label = btn.querySelector('span:nth-child(2)');
+    var original = label.textContent;
+    function done() {
+      label.textContent = 'copied';
+      setTimeout(function () { label.textContent = original; }, 1400);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(function () {});
+    } else {
+      var ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch (e) {}
+      document.body.removeChild(ta);
+    }
+  });
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,30 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "Website" },
+    { "id": "page-2", "name": "Source directions" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html", "title": "nterm.ai — home", "page": "page-1", "x": 0, "y": 0, "w": 900, "h": 2510 },
+    { "file": "TerminalNative.dc.html", "title": "B — Terminal-native", "page": "page-2", "x": 0, "y": 0, "w": 900, "h": 1460 },
+    { "file": "EnterpriseEditorial.dc.html", "title": "C — Enterprise editorial", "page": "page-2", "x": 1020, "y": 0, "w": 900, "h": 1460 }
+  ],
+  "annotations": [
+    {
+      "id": "brief",
+      "x": 0,
+      "y": -170,
+      "w": 620,
+      "page": "page-1",
+      "text": "nterm.ai home page — B + C combined.\nEditorial frame (serif, light, calm) for the buyer; a real terminal session as the proof element for the engineer.\nPrimary action is the install command; demo request is secondary.\n[BRACKETED] items are facts I don't have yet."
+    },
+    {
+      "id": "note-sources",
+      "x": 0,
+      "y": -140,
+      "w": 620,
+      "page": "page-2",
+      "text": "The two directions this page was built from. Kept for reference — not deliverables.\nNote: these two still carry their original self-serve vs sales-led CTAs, which is the positioning question the combined page resolves."
+    }
+  ],
+  "launch": { "view": "canvas", "page": "page-1" }
+}

@@ -1,0 +1,178 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Libre+Franklin:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Libre Franklin', system-ui, sans-serif; }
+    a { color: #1e5f4f; } a:hover { color: #123c31; }
+  </style>
+</helmet>
+
+<div style="width: 900px; min-height: 2480px; background: #fdfcfa; color: #1a1a18;">
+
+  <!-- ── nav ── -->
+  <div style="display: flex; align-items: center; justify-content: space-between; padding: 22px 52px; border-bottom: 1px solid #e3e0da;">
+    <div style="font-family: 'Newsreader', serif; font-size: 24px; font-weight: 600; letter-spacing: -0.01em;">nterm<span style="color: #1e5f4f;">.</span>ai</div>
+    <div style="display: flex; gap: 26px; font-size: 13px; font-weight: 500; color: #55524c; align-items: center;">
+      <span>Platform</span><span>Security</span><span>Docs</span><span>Pricing</span>
+      <span style="background: #16211c; color: #d8e4dc; padding: 9px 18px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; font-size: 12.5px;">Get nterm</span>
+    </div>
+  </div>
+
+  <!-- ── hero ── -->
+  <div style="padding: 60px 52px 0 52px;">
+    <div style="font-size: 12px; font-weight: 600; letter-spacing: 0.1em; color: #1e5f4f; margin-bottom: 18px;">AI TERMINAL FOR NETWORK ENGINEERS</div>
+    <h1 style="font-family: 'Newsreader', serif; font-size: 50px; line-height: 1.1; font-weight: 500; letter-spacing: -0.018em; margin: 0 0 20px 0; max-width: 730px; text-wrap: pretty;">Your network's configuration, finally legible.</h1>
+    <p style="font-size: 17px; line-height: 1.6; color: #4a4741; max-width: 610px; margin: 0 0 28px 0;">Ask a question about a live device in plain English. Get an answer that cites the config lines behind it — and vendor-correct syntax you can actually paste. Cisco, Palo Alto, Fortinet.</p>
+    <div style="display: flex; gap: 18px; align-items: center;">
+      <span style="display: flex; align-items: center; gap: 14px; background: #16211c; color: #d8e4dc; padding: 15px 20px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 14px; box-shadow: 0 6px 18px -8px rgba(20,33,28,0.45);">
+        <span style="color: #7dd3a0;">$</span>
+        <span>brew install nterm</span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7f9187" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="9" y="9" width="12" height="12" rx="2"/>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg>
+      </span>
+      <span style="font-size: 14px; font-weight: 600; color: #1e5f4f; border-bottom: 1px solid #b8ccc4; padding-bottom: 2px;">Request a demo</span>
+    </div>
+  </div>
+
+  <!-- ── terminal proof block ── -->
+  <div style="margin: 44px 52px 0 52px; border-radius: 5px; overflow: hidden; box-shadow: 0 18px 44px -18px rgba(20,33,28,0.42), 0 2px 6px rgba(20,33,28,0.10);">
+    <div style="display: flex; gap: 7px; padding: 12px 16px; background: #16211c; align-items: center; border-bottom: 1px solid #26332d;">
+      <span style="width: 10px; height: 10px; border-radius: 50%; background: #3a4640; display: inline-block;"></span>
+      <span style="width: 10px; height: 10px; border-radius: 50%; background: #3a4640; display: inline-block;"></span>
+      <span style="width: 10px; height: 10px; border-radius: 50%; background: #3a4640; display: inline-block;"></span>
+      <span style="margin-left: 12px; color: #7f9187; font-family: 'JetBrains Mono', monospace; font-size: 11px;">nterm — core-sw-01</span>
+    </div>
+    <div style="background: #0b0f0d; padding: 24px 26px; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.8; color: #d8e4dc;">
+      <div><span style="color: #7dd3a0;">$</span> nterm ask core-sw-01</div>
+      <div style="margin-top: 4px;"><span style="color: #5f7169;">&gt;</span> why can't vlan 340 reach the firewall?</div>
+      <div style="margin-top: 16px; color: #5f7169;">reading running-config … 4,812 lines</div>
+      <div style="color: #5f7169;">tracing vlan 340 → trunk → firewall path</div>
+      <div style="margin-top: 16px;">VLAN 340 is defined and active <span style="color: #5f7169;">(line 118)</span>, but the</div>
+      <div>trunk toward the firewall on <span style="color: #e8b96b;">Gi1/0/47</span> does not</div>
+      <div>carry it — allowed list is <span style="color: #e8b96b;">10,20,100-115,300-338</span></div>
+      <div><span style="color: #5f7169;">(line 3402)</span>.</div>
+      <div style="margin-top: 8px; color: #9aaba1;">Traffic is switched locally but never egresses toward</div>
+      <div style="color: #9aaba1;">the firewall, so return routing is never consulted.</div>
+      <div style="margin-top: 18px; color: #5f7169;">─ suggested change ──────────────────────────────</div>
+      <div style="margin-top: 10px; color: #7dd3a0;">interface GigabitEthernet1/0/47</div>
+      <div style="color: #7dd3a0;">&nbsp;switchport trunk allowed vlan add 340</div>
+      <div style="margin-top: 16px; color: #5f7169;">diff against running-config before commit? [y/N]</div>
+    </div>
+  </div>
+  <div style="margin: 14px 52px 0 52px; font-size: 12.5px; color: #7a766e; font-style: italic;">Illustrative session. Every suggested change is diffed against the running config before anything is applied.</div>
+
+  <!-- ── capability rows ── -->
+  <div style="margin: 52px 52px 0 52px;">
+    <div style="font-family: 'Newsreader', serif; font-size: 30px; font-weight: 500; letter-spacing: -0.012em; margin-bottom: 26px;">Three things it does well.</div>
+
+    <div style="display: flex; gap: 26px; padding: 22px 0; border-top: 1px solid #e3e0da; align-items: start;">
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: #1e5f4f; width: 128px; flex-shrink: 0; padding-top: 3px;">--explain</div>
+      <div>
+        <div style="font-size: 16px; font-weight: 600; margin-bottom: 6px;">Reads before it writes</div>
+        <div style="font-size: 14px; line-height: 1.6; color: #4a4741; max-width: 580px;">Ask what any rule, route or policy actually does. Answers cite the lines they came from, so you can check the work instead of trusting it.</div>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 26px; padding: 22px 0; border-top: 1px solid #e3e0da; align-items: start;">
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: #1e5f4f; width: 128px; flex-shrink: 0; padding-top: 3px;">--translate</div>
+      <div>
+        <div style="font-size: 16px; font-weight: 600; margin-bottom: 6px;">Vendor-native output</div>
+        <div style="font-size: 14px; line-height: 1.6; color: #4a4741; max-width: 580px;">Move policy between platforms and get an explicit list of what has no equivalent — the part every migration tool quietly skips.</div>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 26px; padding: 22px 0; border-top: 1px solid #e3e0da; border-bottom: 1px solid #e3e0da; align-items: start;">
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: #1e5f4f; width: 128px; flex-shrink: 0; padding-top: 3px;">--offline</div>
+      <div>
+        <div style="font-size: 16px; font-weight: 600; margin-bottom: 6px;">Runs where the data is</div>
+        <div style="font-size: 14px; line-height: 1.6; color: #4a4741; max-width: 580px;">Self-hosted and air-gap capable. Configuration never leaves your network — which is the only way it gets approved in the environments this was built for.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── audit summary + rationale ── -->
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px; margin: 52px 52px 0 52px; align-items: start;">
+    <div>
+      <div style="font-family: 'Newsreader', serif; font-size: 27px; font-weight: 500; letter-spacing: -0.01em; margin-bottom: 14px; text-wrap: pretty;">Point it at a policy you inherited.</div>
+      <div style="font-size: 14.5px; line-height: 1.65; color: #4a4741;">Most firewall rulebases have been edited by people who left years ago. nterm reads the whole thing and tells you what is dead, what is redundant, and what is quietly far more permissive than anyone intended.</div>
+    </div>
+    <div style="border: 1px solid #e3e0da; border-radius: 4px; background: #f7f5f1; padding: 24px;">
+      <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; color: #7a766e; margin-bottom: 16px;">POLICY REVIEW — SUMMARY</div>
+      <div style="display: flex; flex-direction: column; gap: 13px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #e3e0da; padding-bottom: 11px;">
+          <span style="font-size: 13px; color: #4a4741;">Shadowed rules</span>
+          <span style="font-family: 'Newsreader', serif; font-size: 22px; font-weight: 500;">[N]</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #e3e0da; padding-bottom: 11px;">
+          <span style="font-size: 13px; color: #4a4741;">Unused objects</span>
+          <span style="font-family: 'Newsreader', serif; font-size: 22px; font-weight: 500;">[N]</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #e3e0da; padding-bottom: 11px;">
+          <span style="font-size: 13px; color: #4a4741;">Overly permissive</span>
+          <span style="font-family: 'Newsreader', serif; font-size: 22px; font-weight: 500; color: #a3542c;">[N]</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <span style="font-size: 13px; color: #4a4741;">Devices in scope</span>
+          <span style="font-family: 'Newsreader', serif; font-size: 22px; font-weight: 500;">[N]</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── pull quote ── -->
+  <div style="margin: 52px 52px 0 52px; border-left: 3px solid #1e5f4f; padding: 4px 0 4px 24px;">
+    <div style="font-family: 'Newsreader', serif; font-size: 25px; line-height: 1.42; font-weight: 400; color: #2a2823; text-wrap: pretty;">Most config tools were built by people who have never had to justify a change window at 2am.</div>
+    <div style="font-size: 13px; color: #7a766e; margin-top: 12px;">NextHop LLC — [YEARS] years of multi-vendor firewall and routing migrations</div>
+  </div>
+
+  <!-- ── trust strip ── -->
+  <div style="margin: 48px 52px 0 52px; border-top: 1px solid #e3e0da; border-bottom: 1px solid #e3e0da; padding: 22px 0; display: flex; align-items: center; gap: 28px;">
+    <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; color: #7a766e; flex-shrink: 0;">TRUSTED BY</span>
+    <div style="display: flex; gap: 18px; flex-grow: 1;">
+      <div style="height: 26px; flex-grow: 1; background: #eeebe5; border-radius: 2px;"></div>
+      <div style="height: 26px; flex-grow: 1; background: #eeebe5; border-radius: 2px;"></div>
+      <div style="height: 26px; flex-grow: 1; background: #eeebe5; border-radius: 2px;"></div>
+      <div style="height: 26px; flex-grow: 1; background: #eeebe5; border-radius: 2px;"></div>
+    </div>
+    <span style="font-size: 11px; color: #a09b92; flex-shrink: 0;">[CLIENT LOGOS]</span>
+  </div>
+
+  <!-- ── closing cta ── -->
+  <div style="margin: 48px 52px 0 52px; background: #14211c; color: #fdfcfa; border-radius: 5px; padding: 40px;">
+    <div style="font-family: 'Newsreader', serif; font-size: 30px; font-weight: 500; letter-spacing: -0.012em; margin-bottom: 12px;">See it against your own config.</div>
+    <div style="font-size: 14.5px; color: #a8b5af; margin-bottom: 26px; max-width: 470px; line-height: 1.6;">A [SESSION LENGTH] working session against one of your live device configs. Nothing leaves your environment.</div>
+    <div style="display: flex; gap: 18px; align-items: center;">
+      <span style="display: flex; align-items: center; gap: 14px; background: #fdfcfa; color: #14211c; padding: 15px 20px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 14px;">
+        <span style="color: #1e5f4f;">$</span>
+        <span>brew install nterm</span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8a938e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="9" y="9" width="12" height="12" rx="2"/>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg>
+      </span>
+      <span style="font-size: 14px; font-weight: 600; color: #d8e4dc; border-bottom: 1px solid #4a5a52; padding-bottom: 2px;">Request a demo</span>
+    </div>
+  </div>
+
+  <!-- ── footer ── -->
+  <div style="margin: 40px 52px 0 52px; padding-bottom: 44px; display: flex; justify-content: space-between; align-items: baseline; border-top: 1px solid #e3e0da; padding-top: 22px;">
+    <div style="font-family: 'Newsreader', serif; font-size: 17px; font-weight: 600;">nterm<span style="color: #1e5f4f;">.</span>ai</div>
+    <div style="display: flex; gap: 24px; font-size: 12.5px; color: #7a766e;">
+      <span>Docs</span><span>Security</span><span>Status</span><span>Contact</span>
+      <span>© [YEAR] NextHop LLC</span>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>
