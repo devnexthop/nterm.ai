@@ -21,7 +21,7 @@ excludes the categories that must never ship:
 | Excluded | Why |
 |---|---|
 | `site/` | the marketing site |
-| `design/` | artboards, drafts, positioning notes |
+| `design/` | artboards, drafts, positioning notes (see `nterm-private`) |
 | `docs/`, `docs/internal/` | internal documentation |
 | `dev/` (`DEVPLAN.md`), `resource/` | roadmaps, strategy, competitive research |
 | `relay/`, `scripts/deploy-site.sh`, `scripts/nginx-*.conf` | deploy + relay infrastructure |
@@ -34,11 +34,14 @@ This has already been violated once: `design/` was committed on 2026-08-26 while
 recovering files from a scratch folder and removed the same day (`ef2fe14`). It is still
 in history.
 
-**Open gap:** the excluded paths live on this Mac and in **no git repo at all**, so they
-do not reach the Windows box or survive a disk failure. `.gitignore` says they belong in
-"a separate private repo" — that repo does not exist yet. Until it does, treat
-`site/`, `relay/`, `design/` and `scripts/deploy-site.sh` as single-copy and back them up
-manually.
+**The excluded paths live in `devnexthop/nterm-private`** (private), checked out at
+`~/gitsync/nterm-private`: `site/`, `design/`, `relay/`, `scripts/deploy-site.sh`,
+`dev/`, `resource/`, `docs/`. Created 2026-08-26 — until then they were in no git repo at
+all, single-copy on one Mac.
+
+Work on those in `~/gitsync/nterm-private`. They also remain on disk here so local runs
+and deploys still work, but this repo will never track them. **Nothing moves from the
+private repo into this one.**
 
 ---
 
@@ -77,8 +80,8 @@ into a chat, an issue, or a commit.
 | `backend/app/` | FastAPI service — `main.py`, `terminal_hub.py` (SSH/websocket), `crypto.py` + `hostkeys.py` (vault), `ai_service.py` + `llm/`, `mcp_server.py` + `mcp_client.py`, `simulators.py`, `bench_feed.py`, `toolkit/` (syslog/TFTP/DHCP) |
 | `frontend/` | web UI |
 | `desktop/` | Electron shell (`main.cjs`, `preload.cjs`) |
-| `relay/` | share-link relay — **not in the public repo** |
-| `site/` | marketing site + `bench-feed.json` — **not in the public repo** |
+| `relay/` | share-link relay — lives in `nterm-private` |
+| `site/` | marketing site + `bench-feed.json` — lives in `nterm-private` |
 | `data/` | the vault — never committed |
 
 ## Engineer bench feed
