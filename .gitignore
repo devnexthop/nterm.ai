@@ -35,5 +35,6 @@ relay-token*
 site/
 docs/
 relay/
+design/
 scripts/deploy-site.sh
 scripts/nginx-*.conf
