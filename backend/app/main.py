@@ -1,65 +1,87 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from . import mcp_client
 from .ai_service import build_messages, chat, offline_reply
 from .analyzers import run_analyzers
 from .architect import acl_lines, config_diff, summarize, translate_rule, type7_decode, type7_encode
-from . import bench_feed
+from . import bench_feed, kb, mcp_client
+from .auth import TOKEN, allowed_origins, audit, check_ws_token, require_token
+from . import hostkeys
 from .config import APP_DOMAIN, APP_NAME, APP_VERSION, DATA_DIR, STATIC_DIR
-from .crypto import encrypt
-from .db import Base, SessionLocal, engine, get_db
+from .crypto import decrypt, encrypt
+from .db import Base, SessionLocal, engine, get_db, migrate_schema
 from .device_profiles import PROFILES
-from .extensions import enabled_snippets, sync_builtin
-from .models import Customer, DhcpLease, Extension, McpServer, SavedSession, SessionLog, SyslogEvent
+from .extensions import USER_PACK, enabled_snippets, ensure_user_pack, sync_builtin
+from .llm import act as ai_act
+from .llm.providers import guess_provider, list_models, suggest_base_url
+from .mcp_server import router as mcp_router
+from .models import AiCache, AiEvent, Credential, Customer, DhcpLease, Extension, McpServer, SavedSession, SessionLog, SyslogEvent
 from .schemas import (
+    AclIn,
+    AiActIn,
     AiChatIn,
+    AiDecisionIn,
+    AiModelsIn,
     AnalyzeRequest,
     BroadcastIn,
+    CredentialIn,
     CustomerIn,
+    DiffIn,
     ExtensionInstall,
     ExtensionToggle,
+    KbIn,
     McpIn,
+    NameIn,
     SessionIn,
     SessionUpdate,
     SettingsIn,
+    SnippetIn,
     SubnetIn,
     SummarizeIn,
     ToolkitServiceIn,
     TranslateIn,
     Type7In,
-    DiffIn,
-    AclIn,
 )
 from .seed import seed
-from .settings_store import get_openai_key, get_value, set_openai_key, set_value
+from .settings_store import get_anthropic_key, get_openai_key, get_value, set_anthropic_key, set_openai_key, set_value
 from .terminal_hub import hub
 from .toolkit import manager as toolkit
 from .toolkit.calculator import analyze_cidr
 from .toolkit.syslog_srv import event_to_dict
 
 Base.metadata.create_all(bind=engine)
+migrate_schema()
 with SessionLocal() as db:
     seed(db)
 
-app = FastAPI(title=APP_NAME, version=APP_VERSION)
+app = FastAPI(title=APP_NAME, version=APP_VERSION, dependencies=[Depends(require_token)])
+# Restricted to this app's own origin (plus the Vite dev server when NTERM_DEV=1).
+# A credential-owning service on a local port must not accept arbitrary origins:
+# with allow_origins=["*"] any site the operator visits could read the session
+# inventory and stored transcripts straight out of the browser.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=allowed_origins(),
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-NTerm-Token"],
 )
+app.include_router(mcp_router, prefix="/mcp")
 
 
 def session_out(row: SavedSession) -> dict:
+    cred = row.credential
     return {
         "id": row.id,
         "customer_id": row.customer_id,
@@ -68,16 +90,47 @@ def session_out(row: SavedSession) -> dict:
         "device_type": row.device_type,
         "host": row.host,
         "port": row.port,
-        "username": row.username,
-        "has_password": bool(row.password_enc),
-        "has_enable_password": bool(row.enable_password_enc),
+        "username": (cred.username if cred and cred.username else row.username),
+        "has_password": bool((cred and cred.password_enc) or row.password_enc),
+        "has_enable_password": bool((cred and cred.enable_password_enc) or row.enable_password_enc),
         "has_private_key": bool(row.private_key_enc),
         "jump_host": row.jump_host,
         "notes": row.notes,
         "logging_enabled": row.logging_enabled,
         "post_login": row.post_login,
+        "credential_id": row.credential_id,
+        "baud": row.baud or 9600,
         "created_at": row.created_at,
     }
+
+
+def cred_out(row: Credential) -> dict:
+    return {
+        "id": row.id,
+        "name": row.name,
+        "username": row.username,
+        "device_type": row.device_type,
+        "notes": row.notes,
+        "has_password": bool(row.password_enc),
+        "has_enable_password": bool(row.enable_password_enc),
+        "created_at": row.created_at,
+    }
+
+
+def maybe_save_cred(db: Session, name: str | None, username: str, password: str | None, enable: str | None, device_type: str) -> int | None:
+    if not name:
+        return None
+    row = Credential(
+        name=name,
+        username=username,
+        password_enc=encrypt(password),
+        enable_password_enc=encrypt(enable),
+        device_type=device_type,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row.id
 
 
 @app.get("/api/health")
@@ -87,9 +140,15 @@ def health():
 
 @app.get("/api/meta")
 def meta(db: Session = Depends(get_db)):
+    sync_builtin(db)
+    packs = [
+        {"id": e.id, "name": e.name}
+        for e in db.query(Extension).filter(Extension.kind == "snippets", Extension.enabled.is_(True)).all()
+    ]
     return {
         "profiles": PROFILES,
         "snippets": enabled_snippets(db),
+        "snippet_packs": packs,
         "themes": [
             "nexthop_dark",
             "nexthop_light",
@@ -154,6 +213,13 @@ def delete_customer(cid: int, db: Session = Depends(get_db)):
 def create_session(body: SessionIn, db: Session = Depends(get_db)):
     if not db.get(Customer, body.customer_id):
         raise HTTPException(404, "Customer not found")
+    cid = body.credential_id
+    if body.save_as_credential:
+        cid = maybe_save_cred(db, body.save_as_credential, body.username, body.password, body.enable_password, body.device_type)
+    if cid:
+        cred = db.get(Credential, cid)
+        if cred and not body.username:
+            body.username = cred.username
     row = SavedSession(
         customer_id=body.customer_id,
         name=body.name,
@@ -169,6 +235,8 @@ def create_session(body: SessionIn, db: Session = Depends(get_db)):
         notes=body.notes,
         logging_enabled=body.logging_enabled,
         post_login=body.post_login,
+        credential_id=cid,
+        baud=body.baud or 9600,
     )
     db.add(row)
     db.commit()
@@ -185,6 +253,7 @@ def update_session(sid: int, body: SessionUpdate, db: Session = Depends(get_db))
     password = data.pop("password", None)
     enable = data.pop("enable_password", None)
     key = data.pop("private_key", None)
+    extra = data.pop("save_as_credential", None)
     for k, v in data.items():
         setattr(row, k, v)
     if password:
@@ -193,6 +262,8 @@ def update_session(sid: int, body: SessionUpdate, db: Session = Depends(get_db))
         row.enable_password_enc = encrypt(enable)
     if key:
         row.private_key_enc = encrypt(key)
+    if extra:
+        row.credential_id = maybe_save_cred(db, extra, row.username, password, enable, row.device_type)
     db.commit()
     return session_out(row)
 
@@ -205,6 +276,55 @@ def delete_session(sid: int, db: Session = Depends(get_db)):
     db.delete(row)
     db.commit()
     return {"ok": True}
+
+
+@app.post("/api/sessions/{sid}/duplicate")
+def duplicate_session(sid: int, db: Session = Depends(get_db)):
+    row = db.get(SavedSession, sid)
+    if not row:
+        raise HTTPException(404, "Session not found")
+    copy = SavedSession(
+        customer_id=row.customer_id,
+        name=f"{row.name} copy",
+        kind=row.kind,
+        device_type=row.device_type,
+        host=row.host,
+        port=row.port,
+        username=row.username,
+        password_enc=row.password_enc,
+        enable_password_enc=row.enable_password_enc,
+        private_key_enc=row.private_key_enc,
+        jump_host=row.jump_host,
+        notes=row.notes,
+        logging_enabled=row.logging_enabled,
+        post_login=row.post_login,
+        credential_id=row.credential_id,
+        baud=row.baud or 9600,
+    )
+    db.add(copy)
+    db.commit()
+    db.refresh(copy)
+    return session_out(copy)
+
+
+@app.post("/api/sessions/{sid}/vault")
+def session_to_vault(sid: int, body: NameIn, db: Session = Depends(get_db)):
+    row = db.get(SavedSession, sid)
+    if not row:
+        raise HTTPException(404, "Session not found")
+    cred = Credential(
+        name=body.name or f"{row.name} vault",
+        username=row.username,
+        password_enc=row.password_enc,
+        enable_password_enc=row.enable_password_enc,
+        device_type=row.device_type,
+    )
+    db.add(cred)
+    db.commit()
+    db.refresh(cred)
+    row.credential_id = cred.id
+    db.commit()
+    return cred_out(cred)
 
 
 @app.get("/api/sessions/{sid}/logs")
@@ -247,7 +367,11 @@ def download_log(lid: int, db: Session = Depends(get_db)):
 def get_settings(db: Session = Depends(get_db)):
     return {
         "openai_configured": bool(get_openai_key(db)),
+        "anthropic_configured": bool(get_anthropic_key(db)),
         "openai_model": get_value(db, "openai_model", "gpt-4.1-mini"),
+        "ai_provider": get_value(db, "ai_provider", "openai"),
+        "ai_base_url": get_value(db, "ai_base_url", ""),
+        "ai_cache_enabled": get_value(db, "ai_cache_enabled", "true") == "true",
         "theme": get_value(db, "theme", "nexthop_dark"),
         "font_size": int(get_value(db, "font_size", "14")),
         "ai_auto_context": get_value(db, "ai_auto_context", "true") == "true",
@@ -261,8 +385,16 @@ def get_settings(db: Session = Depends(get_db)):
 def put_settings(body: SettingsIn, db: Session = Depends(get_db)):
     if body.openai_api_key:
         set_openai_key(db, body.openai_api_key.strip())
+    if body.anthropic_api_key:
+        set_anthropic_key(db, body.anthropic_api_key.strip())
     if body.openai_model:
         set_value(db, "openai_model", body.openai_model)
+    if body.ai_provider:
+        set_value(db, "ai_provider", body.ai_provider)
+    if body.ai_base_url is not None:
+        set_value(db, "ai_base_url", body.ai_base_url)
+    if body.ai_cache_enabled is not None:
+        set_value(db, "ai_cache_enabled", "true" if body.ai_cache_enabled else "false")
     if body.theme:
         set_value(db, "theme", body.theme)
     if body.font_size:
@@ -312,6 +444,29 @@ def delete_mcp(mid: int, db: Session = Depends(get_db)):
 @app.get("/api/mcp/tools")
 async def mcp_tools(db: Session = Depends(get_db)):
     return await mcp_client.list_tools(db)
+
+
+@app.post("/api/ai/models")
+def ai_models(body: AiModelsIn, db: Session = Depends(get_db)):
+    pasted = (body.api_key or "").strip()
+    hinted = (body.provider or get_value(db, "ai_provider", "openai")).strip().lower()
+    stored_base = get_value(db, "ai_base_url", "")
+    base = (body.base_url if body.base_url is not None else stored_base).strip()
+    provider = guess_provider(pasted, base, hinted)
+    key = pasted
+    if not key:
+        key = (get_anthropic_key(db) if provider == "anthropic" else get_openai_key(db)) or ""
+    if provider == "compatible":
+        base = base or suggest_base_url(pasted or key) or stored_base
+    if not key and provider != "compatible":
+        raise HTTPException(400, "Paste an API key first.")
+    if provider == "compatible" and not base:
+        raise HTTPException(400, "Set a base URL for a compatible provider (OpenRouter, Groq, Ollama…).")
+    try:
+        models = list_models(provider, key, base or None)
+        return {"provider": provider, "base_url": base, "models": models, "error": None}
+    except Exception as exc:
+        return {"provider": provider, "base_url": base, "models": [], "error": str(exc)}
 
 
 @app.post("/api/ai/chat")
@@ -397,6 +552,67 @@ def install_extension(body: ExtensionInstall, db: Session = Depends(get_db)):
     return {"ok": True, "id": eid}
 
 
+@app.get("/api/snippets")
+def list_snippets(device_type: str | None = None, pack: str | None = None, db: Session = Depends(get_db)):
+    sync_builtin(db)
+    return enabled_snippets(db, device_type, pack)
+
+
+@app.post("/api/snippets")
+def add_snippet(body: SnippetIn, db: Session = Depends(get_db)):
+    row = ensure_user_pack(db)
+    man = dict(row.manifest or {})
+    snips = list(man.get("snippets") or [])
+    item = {
+        "id": body.id or uuid.uuid4().hex[:10],
+        "name": body.name.strip(),
+        "command": body.command,
+        "device_types": body.device_types,
+    }
+    snips.append(item)
+    man["snippets"] = snips
+    row.manifest = man
+    flag_modified(row, "manifest")
+    db.commit()
+    return {**item, "extension": USER_PACK, "editable": True}
+
+
+@app.put("/api/snippets/{sid}")
+def update_snippet(sid: str, body: SnippetIn, db: Session = Depends(get_db)):
+    row = ensure_user_pack(db)
+    man = dict(row.manifest or {})
+    snips = list(man.get("snippets") or [])
+    found = False
+    for i, s in enumerate(snips):
+        if s.get("id") == sid:
+            snips[i] = {
+                "id": sid,
+                "name": body.name.strip(),
+                "command": body.command,
+                "device_types": body.device_types,
+            }
+            found = True
+            break
+    if not found:
+        raise HTTPException(404, "Snippet not found")
+    man["snippets"] = snips
+    row.manifest = man
+    flag_modified(row, "manifest")
+    db.commit()
+    return {"ok": True}
+
+
+@app.delete("/api/snippets/{sid}")
+def delete_snippet(sid: str, db: Session = Depends(get_db)):
+    row = ensure_user_pack(db)
+    man = dict(row.manifest or {})
+    man["snippets"] = [s for s in (man.get("snippets") or []) if s.get("id") != sid]
+    row.manifest = man
+    flag_modified(row, "manifest")
+    db.commit()
+    return {"ok": True}
+
+
 @app.get("/api/toolkit")
 def toolkit_status(db: Session = Depends(get_db)):
     st = toolkit.status()
@@ -449,6 +665,8 @@ async def tftp_upload(file: UploadFile = File(...)):
     if not dest:
         raise HTTPException(400, "Illegal name")
     dest.write_bytes(await file.read())
+    with SessionLocal() as db:
+        kb.ingest(db, title=name, body=dest.read_text(encoding="utf-8", errors="replace")[:200000], source="tftp")
     return {"ok": True, "name": name}
 
 
@@ -553,8 +771,154 @@ async def broadcast(body: BroadcastIn):
     return {"ok": True, "count": len(body.tab_ids)}
 
 
+@app.get("/api/credentials")
+def list_credentials(db: Session = Depends(get_db)):
+    return [cred_out(r) for r in db.query(Credential).order_by(Credential.name).all()]
+
+
+@app.post("/api/credentials")
+def create_credential(body: CredentialIn, db: Session = Depends(get_db)):
+    row = Credential(
+        name=body.name,
+        username=body.username,
+        password_enc=encrypt(body.password),
+        enable_password_enc=encrypt(body.enable_password),
+        device_type=body.device_type,
+        notes=body.notes,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return cred_out(row)
+
+
+@app.put("/api/credentials/{cid}")
+def update_credential(cid: int, body: CredentialIn, db: Session = Depends(get_db)):
+    row = db.get(Credential, cid)
+    if not row:
+        raise HTTPException(404)
+    row.name, row.username, row.device_type, row.notes = body.name, body.username, body.device_type, body.notes
+    if body.password:
+        row.password_enc = encrypt(body.password)
+    if body.enable_password:
+        row.enable_password_enc = encrypt(body.enable_password)
+    db.commit()
+    return cred_out(row)
+
+
+@app.delete("/api/credentials/{cid}")
+def delete_credential(cid: int, db: Session = Depends(get_db)):
+    row = db.get(Credential, cid)
+    if not row:
+        raise HTTPException(404)
+    for s in db.query(SavedSession).filter(SavedSession.credential_id == cid).all():
+        if not s.password_enc:
+            s.password_enc = row.password_enc
+        if not s.enable_password_enc:
+            s.enable_password_enc = row.enable_password_enc
+        if not s.username:
+            s.username = row.username
+        s.credential_id = None
+    db.delete(row)
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/api/ai/act")
+def ai_act_ep(body: AiActIn, db: Session = Depends(get_db)):
+    session = db.get(SavedSession, body.session_id) if body.session_id else None
+    dtype = body.device_type or (session.device_type if session else "cisco_ios")
+    cid = body.customer_id or (session.customer_id if session else None)
+    hits = kb.search(db, body.message)
+    try:
+        return ai_act.act(
+            db,
+            message=body.message,
+            device_type=dtype,
+            customer_id=cid,
+            session_id=body.session_id,
+            source="do_bar",
+            kb_hits=hits,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.post("/api/ai/decision")
+def ai_decision(body: AiDecisionIn, db: Session = Depends(get_db)):
+    row = db.get(AiEvent, body.event_id)
+    if not row:
+        raise HTTPException(404)
+    row.decision = body.decision
+    db.commit()
+    return {"ok": True, "decision": row.decision}
+
+
+@app.get("/api/ai/events")
+def ai_events(customer_id: int | None = None, db: Session = Depends(get_db)):
+    q = db.query(AiEvent).order_by(AiEvent.id.desc())
+    if customer_id:
+        q = q.filter(AiEvent.customer_id == customer_id)
+    rows = q.limit(200).all()
+    return [
+        {
+            "id": r.id,
+            "created_at": r.created_at,
+            "customer_id": r.customer_id,
+            "session_id": r.session_id,
+            "source": r.source,
+            "prompt": r.prompt,
+            "tool_name": r.tool_name,
+            "commands_preview": r.commands_preview,
+            "decision": r.decision,
+            "provider": r.provider,
+            "model": r.model,
+            "prompt_tokens": r.prompt_tokens,
+            "completion_tokens": r.completion_tokens,
+            "total_tokens": r.total_tokens,
+            "cache_hit": r.cache_hit,
+        }
+        for r in rows
+    ]
+
+
+@app.get("/api/ai/usage")
+def ai_usage(db: Session = Depends(get_db)):
+    return ai_act.token_totals(db)
+
+
+@app.delete("/api/ai/cache")
+def ai_cache_clear(db: Session = Depends(get_db)):
+    db.query(AiCache).delete()
+    db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/kb")
+def kb_search(q: str = "", db: Session = Depends(get_db)):
+    return kb.search(db, q)
+
+
+@app.post("/api/kb")
+def kb_add(body: KbIn, db: Session = Depends(get_db)):
+    row = kb.ingest(db, title=body.title, body=body.body, source=body.source, vendor=body.vendor, customer_id=body.customer_id)
+    return {"id": row.id}
+
+
+@app.get("/api/serial/ports")
+def serial_ports():
+    try:
+        from serial.tools import list_ports
+
+        return [{"device": p.device, "description": p.description} for p in list_ports.comports()]
+    except Exception:
+        return []
+
+
 @app.websocket("/ws/term/{tab_id}")
 async def terminal_ws(ws: WebSocket, tab_id: str, session_id: int):
+    if not await check_ws_token(ws):
+        return
     await ws.accept()
     db = SessionLocal()
     try:
@@ -570,5 +934,34 @@ async def terminal_ws(ws: WebSocket, tab_id: str, session_id: int):
         db.close()
 
 
+@app.get("/api/hostkeys")
+def list_hostkeys():
+    """Pinned SSH host keys, so an operator can see and manage what is trusted."""
+    return hostkeys.list_all()
+
+
+@app.delete("/api/hostkeys/{host_port}")
+def forget_hostkey(host_port: str):
+    if not hostkeys.forget(host_port):
+        raise HTTPException(404, "No pinned key for that host")
+    audit("ssh.hostkey_forgotten", host_port=host_port)
+    return {"ok": True}
+
+
 if STATIC_DIR.exists():
-    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+    _INDEX = STATIC_DIR / "index.html"
+
+    @app.get("/", include_in_schema=False)
+    def spa_index():
+        """Serve the SPA with the install token injected.
+
+        Same-origin JS reads this; a cross-origin page cannot read the response
+        body now that CORS is restricted, so it cannot learn the token.
+        """
+        html = _INDEX.read_text(encoding="utf-8")
+        tag = f'<meta name="nterm-token" content="{TOKEN}">'
+        if "nterm-token" not in html:
+            html = html.replace("<head>", "<head>\n    " + tag, 1)
+        return HTMLResponse(html)
+
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=False), name="static")

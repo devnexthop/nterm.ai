@@ -16,6 +16,9 @@ from sqlalchemy.orm import Session
 from .config import DATA_DIR
 from .crypto import decrypt
 from .device_profiles import PROFILES, SSH_ALGORITHMS
+from .llm.act import decrypt_session_secrets
+from . import hostkeys
+from .auth import audit
 from .models import SavedSession, SessionLog
 from .simulators import DeviceSimulator
 
@@ -70,6 +73,10 @@ class TerminalHub:
                 await self._run_simulator(tab, session)
             elif session.kind == "local":
                 await self._run_local(tab, session)
+            elif session.kind == "telnet":
+                await self._run_telnet(tab, session)
+            elif session.kind == "serial":
+                await self._run_serial(tab, session)
             else:
                 await self._run_ssh(tab, session)
         except Exception as exc:
@@ -155,19 +162,44 @@ class TerminalHub:
                 proc.terminate()
 
     async def _run_ssh(self, tab: LiveTab, session: SavedSession):
-        password = decrypt(session.password_enc)
-        enable = decrypt(session.enable_password_enc)
+        password, enable = decrypt_session_secrets(session)
         key_text = decrypt(session.private_key_enc)
         client_keys = []
         if key_text:
             client_keys.append(asyncssh.import_private_key(key_text, passphrase=password))
+        host, port = session.host, session.port or 22
+
+        # Verify the host key BEFORE any credential is sent. get_server_host_key
+        # completes only the key exchange, so a changed key aborts the connection
+        # while the password is still in memory and not on the wire.
+        server_key = await asyncssh.get_server_host_key(host, port)
+        try:
+            fp, first_seen = hostkeys.check_and_record(
+                host, port, server_key.public_data, server_key.get_algorithm()
+            )
+        except hostkeys.HostKeyChanged as exc:
+            audit("ssh.hostkey_changed", host=host, port=port,
+                  old=exc.old_fp, new=exc.new_fp)
+            await self._emit(tab, "\r\n\x1b[31m" + str(exc) + "\x1b[0m\r\n")
+            await tab.send_json({"type": "status", "state": "hostkey_changed",
+                                 "old": exc.old_fp, "new": exc.new_fp})
+            raise
+
+        if first_seen:
+            audit("ssh.hostkey_pinned", host=host, port=port, fingerprint=fp)
+            await self._emit(
+                tab,
+                f"\r\n\x1b[33mNew host {host}:{port} — pinned {server_key.get_algorithm()} "
+                f"key {fp}\x1b[0m\r\n",
+            )
+
         opts = dict(
-            host=session.host,
-            port=session.port or 22,
+            host=host,
+            port=port,
             username=session.username or None,
             password=password,
             client_keys=client_keys or None,
-            known_hosts=None,
+            known_hosts=([server_key], [], []),
             login_timeout=20,
             keepalive_interval=30,
         )
@@ -175,6 +207,8 @@ class TerminalHub:
             conn = await asyncssh.connect(**opts, **SSH_ALGORITHMS)
         except (ValueError, TypeError, asyncssh.Error):
             conn = await asyncssh.connect(**opts)
+        audit("ssh.connected", host=host, port=port,
+              username=session.username or "", fingerprint=fp)
         tab.conn = conn
         proc = await conn.create_process(term_type="xterm-256color", encoding="utf-8")
         tab.process = proc
@@ -217,6 +251,83 @@ class TerminalHub:
             pump_task.cancel()
             conn.close()
 
+    async def _run_telnet(self, tab: LiveTab, session: SavedSession):
+        import telnetlib3
+
+        reader, writer = await telnetlib3.open_connection(session.host, session.port or 23)
+        tab.process = writer
+        await tab.send_json({"type": "status", "state": "connected"})
+        user = session.username
+        password, _ = decrypt_session_secrets(session)
+
+        async def pump():
+            try:
+                while True:
+                    data = await reader.read(4096)
+                    if not data:
+                        break
+                    await self._emit(tab, data if isinstance(data, str) else data.decode("utf-8", "replace"))
+            except Exception:
+                pass
+
+        pump_task = asyncio.create_task(pump())
+        if user:
+            await asyncio.sleep(0.4)
+            writer.write(user + "\n")
+        if password:
+            await asyncio.sleep(0.4)
+            writer.write(password + "\n")
+        try:
+            while not tab.closed and tab.ws:
+                try:
+                    msg = await asyncio.wait_for(tab.ws.receive_json(), timeout=1)
+                except asyncio.TimeoutError:
+                    continue
+                except Exception:
+                    break
+                await self._handle_client(tab, msg)
+        finally:
+            pump_task.cancel()
+            writer.close()
+
+    async def _run_serial(self, tab: LiveTab, session: SavedSession):
+        import serial
+
+        port = session.host
+        baud = session.baud or 9600
+        ser = serial.Serial(port, baud, timeout=0)
+        tab.process = ser
+        loop = asyncio.get_running_loop()
+        await tab.send_json({"type": "status", "state": "connected"})
+
+        def _on_read():
+            try:
+                data = ser.read(4096)
+            except Exception:
+                data = b""
+            if data:
+                asyncio.create_task(self._emit(tab, data.decode("utf-8", errors="replace")))
+
+        try:
+            loop.add_reader(ser.fileno(), _on_read)
+        except Exception:
+            pass
+        try:
+            while not tab.closed and tab.ws:
+                try:
+                    msg = await asyncio.wait_for(tab.ws.receive_json(), timeout=1)
+                except asyncio.TimeoutError:
+                    continue
+                except Exception:
+                    break
+                await self._handle_client(tab, msg)
+        finally:
+            try:
+                loop.remove_reader(ser.fileno())
+            except Exception:
+                pass
+            ser.close()
+
     async def _handle_client(self, tab: LiveTab, msg: dict):
         kind = msg.get("type")
         if kind == "input":
@@ -235,9 +346,17 @@ class TerminalHub:
         if tab.kind == "local" and tab.master_fd is not None:
             os.write(tab.master_fd, data.encode())
             return
+        if tab.kind == "serial" and tab.process is not None:
+            try:
+                tab.process.write(data.encode())
+            except Exception:
+                pass
+            return
         proc = tab.process
         if proc is not None and getattr(proc, "stdin", None):
             proc.stdin.write(data)
+        elif proc is not None and hasattr(proc, "write") and tab.kind == "telnet":
+            proc.write(data)
 
     async def resize(self, tab_id: str, cols: int, rows: int):
         tab = self.tabs.get(tab_id)
