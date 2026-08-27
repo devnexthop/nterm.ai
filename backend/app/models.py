@@ -40,6 +40,7 @@ class SavedSession(Base):
     notes: Mapped[str] = mapped_column(Text, default="")
     logging_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     post_login: Mapped[str] = mapped_column(Text, default="")
+    folder: Mapped[str] = mapped_column(String(400), default="")
     credential_id: Mapped[int | None] = mapped_column(ForeignKey("credentials.id"), nullable=True)
     baud: Mapped[int] = mapped_column(Integer, default=9600)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

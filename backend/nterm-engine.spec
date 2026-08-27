@@ -16,6 +16,9 @@ for pkg in ("uvicorn", "anyio", "starlette", "fastapi", "asyncssh", "cryptograph
 datas = []
 if static.exists():
     datas.append((str(static), "static"))
+version = root.parent / "VERSION"
+if version.exists():
+    datas.append((str(version), "."))
 
 a = Analysis(
     ["engine_entry.py"],

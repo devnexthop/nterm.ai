@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { api } from "./api";
 import type { Customer, OpenTab, SavedSession, Settings, Snippet, TokenUsage } from "./types";
 import { applyTheme, THEMES } from "./themes";
@@ -14,9 +14,61 @@ import EditorDrawer from "./components/EditorDrawer";
 import Monitor from "./components/Monitor";
 import CommandBar, { type Mode } from "./components/CommandBar";
 import ErrorBoundary from "./components/ErrorBoundary";
+import {
+  loadLayout, saveLayout, worksetKey, type Edge, type FrameId, type LayoutState,
+} from "./layout";
 
 type Page = "sessions" | "toolkit" | "bench" | "monitor" | "settings";
 type Layout = "single" | "split" | "quad";
+
+function frameSlots(dock: LayoutState, editorOn: boolean) {
+  const show = (id: FrameId) => (id === "editor" ? editorOn : dock[id].open);
+  const ids: FrameId[] = ["sessions", "editor", "ai", "commandbar"];
+  return {
+    left: ids.filter((id) => show(id) && dock[id].edge === "left"),
+    right: ids.filter((id) => show(id) && dock[id].edge === "right"),
+    top: ids.filter((id) => show(id) && dock[id].edge === "top"),
+    bottom: ids.filter((id) => show(id) && dock[id].edge === "bottom"),
+  };
+}
+
+function workspaceGrid(dock: LayoutState, editorOn: boolean): CSSProperties {
+  const { left, right, top, bottom } = frameSlots(dock, editorOn);
+  const sz = (id: FrameId) => {
+    const edge = dock[id].edge;
+    if (id === "commandbar" && (edge === "top" || edge === "bottom")) return "auto";
+    const min = id === "commandbar" ? 72 : 180;
+    return `${Math.max(min, dock[id].sizePx)}px`;
+  };
+  return {
+    display: "grid",
+    gridTemplateColumns: [...left.map(sz), "minmax(0,1fr)", ...right.map(sz)].join(" "),
+    gridTemplateRows: [...top.map(sz), "minmax(0,1fr)", ...bottom.map(sz)].join(" "),
+    minHeight: 0,
+    minWidth: 0,
+  };
+}
+
+function cellStyle(id: FrameId | "main", dock: LayoutState, editorOn: boolean): CSSProperties {
+  const { left, right, top, bottom } = frameSlots(dock, editorOn);
+  const colOf = (fid: FrameId | "main") => {
+    if (fid === "main") return left.length + 1;
+    const li = left.indexOf(fid);
+    if (li >= 0) return li + 1;
+    const ri = right.indexOf(fid);
+    if (ri >= 0) return left.length + 2 + ri;
+    return left.length + 1;
+  };
+  const rowOf = (fid: FrameId | "main") => {
+    if (fid === "main") return top.length + 1;
+    const ti = top.indexOf(fid);
+    if (ti >= 0) return ti + 1;
+    const bi = bottom.indexOf(fid);
+    if (bi >= 0) return top.length + 2 + bi;
+    return top.length + 1;
+  };
+  return { gridColumn: colOf(id), gridRow: rowOf(id), minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" };
+}
 
 function uid() {
   return crypto.randomUUID();
@@ -63,8 +115,44 @@ export default function App() {
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [active, setActive] = useState<string | null>(null);
   const [layout, setLayout] = useState<Layout>("single");
-  const [aiOpen, setAiOpen] = useState(true);
-  const [sideOpen, setSideOpen] = useState(true);
+  const [dock, setDock] = useState<LayoutState>(loadLayout);
+  const [workset, setWorkset] = useState<string | null>(null);
+  const [dragFrame, setDragFrame] = useState<FrameId | null>(null);
+
+  function patchDock(id: FrameId, patch: Partial<LayoutState[FrameId]>) {
+    setDock((d) => {
+      const next = { ...d, [id]: { ...d[id], ...patch } };
+      saveLayout(next);
+      return next;
+    });
+  }
+
+  function toggleDock(id: FrameId) {
+    setDock((d) => {
+      const next = { ...d, [id]: { ...d[id], open: !d[id].open } };
+      saveLayout(next);
+      return next;
+    });
+  }
+
+  function beginResize(e: MouseEvent, id: FrameId, edge: Edge) {
+    e.preventDefault();
+    const axis = edge === "left" || edge === "right" ? "x" : "y";
+    const start = axis === "x" ? e.clientX : e.clientY;
+    const startSize = dock[id].sizePx;
+    const sign = edge === "right" || edge === "bottom" ? -1 : 1;
+    const min = id === "commandbar" ? 48 : 180;
+    const move = (ev: globalThis.MouseEvent) => {
+      const now = axis === "x" ? ev.clientX : ev.clientY;
+      patchDock(id, { sizePx: Math.max(min, startSize + sign * (now - start)) });
+    };
+    const up = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  }
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
   const [barMode, setBarMode] = usePrefStr<Mode>("nterm.bar.mode", "do");
@@ -91,7 +179,7 @@ export default function App() {
   const [scope, setScope] = useState<"selected" | "customer" | "all">("selected");
   const [palette, setPalette] = useState(false);
   const [newCust, setNewCust] = useState(false);
-  const [sessForm, setSessForm] = useState<{ customer?: Customer; session?: SavedSession } | null>(null);
+  const [sessForm, setSessForm] = useState<{ customer?: Customer; session?: SavedSession; folder?: string } | null>(null);
   const [snippets, setSnippets] = useState<Snippet[]>([]);
   const [snipPack, setSnipPack] = useState("auto");
   const [snipForm, setSnipForm] = useState<{ id?: string; name: string; command: string; device_types?: string[] } | null>(null);
@@ -121,18 +209,52 @@ export default function App() {
         e.preventDefault();
         document.getElementById("broadcast")?.focus();
       }
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "a") { e.preventDefault(); setAiOpen((v) => !v); }
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "s") { e.preventDefault(); setSideOpen((v) => !v); }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "a") { e.preventDefault(); toggleDock("ai"); }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "s") { e.preventDefault(); toggleDock("sessions"); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   function openSession(c: Customer, s: SavedSession) {
-    const tab: OpenTab = { tabId: uid(), session: s, customerName: c.name, selected: true };
-    setTabs((t) => [...t, tab]);
-    setActive(tab.tabId);
+    const key = worksetKey(c.id, s.folder || "");
+    setWorkset(key);
     setPage("sessions");
+    setTabs((t) => {
+      const existing = t.find((x) => x.session.id === s.id);
+      if (existing) {
+        setActive(existing.tabId);
+        return t;
+      }
+      const tab: OpenTab = { tabId: uid(), session: s, customerName: c.name, selected: true };
+      setActive(tab.tabId);
+      return [...t, tab];
+    });
+  }
+
+  function selectFolder(c: Customer, folder: string) {
+    setWorkset(worksetKey(c.id, folder));
+  }
+
+  function openFolder(c: Customer, folder: string, sessions: SavedSession[]) {
+    setWorkset(worksetKey(c.id, folder));
+    setPage("sessions");
+    setTabs((t) => {
+      let next = t;
+      let lastId: string | null = null;
+      for (const s of sessions) {
+        const existing = next.find((x) => x.session.id === s.id);
+        if (existing) {
+          lastId = existing.tabId;
+          continue;
+        }
+        const tab: OpenTab = { tabId: uid(), session: s, customerName: c.name, selected: true };
+        lastId = tab.tabId;
+        next = [...next, tab];
+      }
+      if (lastId) setActive(lastId);
+      return next;
+    });
   }
 
   function closeTab(id: string) {
@@ -148,11 +270,27 @@ export default function App() {
     }
   }
 
+  const folderTabs = useMemo(() => {
+    if (!workset) return tabs;
+    return tabs.filter((t) => worksetKey(t.session.customer_id, t.session.folder || "") === workset);
+  }, [tabs, workset]);
+
+  const folderTabIds = folderTabs.map((t) => t.tabId).join(",");
+  useEffect(() => {
+    const ids = new Set(folderTabIds ? folderTabIds.split(",") : []);
+    setActive((cur) => {
+      if (cur && ids.has(cur)) return cur;
+      return folderTabIds ? folderTabIds.split(",")[0] : null;
+    });
+  }, [workset, folderTabIds]);
+
+  const hiddenLive = tabs.length - folderTabs.length;
+
   const visible = useMemo(() => {
-    if (layout === "single") return tabs.filter((t) => t.tabId === active).slice(0, 1);
-    if (layout === "split") return tabs.slice(-2);
-    return tabs.slice(-4);
-  }, [tabs, active, layout]);
+    if (layout === "single") return folderTabs.filter((t) => t.tabId === active).slice(0, 1);
+    if (layout === "split") return folderTabs.slice(-2);
+    return folderTabs.slice(-4);
+  }, [folderTabs, active, layout]);
 
   function targetTabs() {
     if (scope === "all") return tabs;
@@ -176,7 +314,7 @@ export default function App() {
   });
 
   function askAi(text: string) {
-    setAiOpen(true);
+    patchDock("ai", { open: true });
     setAiAsk({ text, nonce: Date.now() });
   }
 
@@ -205,8 +343,8 @@ export default function App() {
     { label: "Split panes", run: () => setLayout("split") },
     { label: "Merge to single tab", run: () => setLayout("single") },
     { label: "Quad tiles", run: () => setLayout("quad") },
-    { label: "Toggle AI", run: () => setAiOpen((v) => !v) },
-    { label: "Toggle sessions sidebar", run: () => setSideOpen((v) => !v) },
+    { label: "Toggle AI", run: () => toggleDock("ai") },
+    { label: "Toggle sessions sidebar", run: () => toggleDock("sessions") },
     { label: "Command bar: Do", run: () => { setPage("sessions"); setBarMode("do"); } },
     { label: "Command bar: Cast (broadcast)", run: () => { setPage("sessions"); setBarMode("cast"); } },
     { label: "Command bar: Macros", run: () => { setPage("sessions"); setBarMode("chips"); } },
@@ -259,14 +397,14 @@ export default function App() {
       </nav>
 
       <div className={`app-body ${page === "sessions" ? "" : "no-header"}`}>
-        {/* Only active-session concerns live here. Share and Subnet act on the
-            session in front of you, so they sit beside its hostname. */}
         {page === "sessions" && (
-          <header className={`sesshdr ${activeTab ? "live" : ""}`}>
+          <header className="sesshdr">
             <span className={`sh-led ${activeTab ? "" : "off"}`} />
             <span className="sh-host">{activeTab ? activeTab.session.name : "No session open"}</span>
+            {workset && <span className="sh-chip">{workset.split(":").slice(1).join(":") || activeTab?.customerName || "All"}</span>}
             {activeTab && <span className="sh-chip">{activeTab.customerName}</span>}
             {activeTab?.session.device_type && <span className="sh-chip">{activeTab.session.device_type}</span>}
+            {hiddenLive > 0 && <span className="sh-chip" title="Sessions still connected in other folders">{hiddenLive} live in other folders</span>}
             <span className="sh-sp" />
             <button
               className={`sh-btn ${shareUrl ? "on" : ""}`}
@@ -281,12 +419,14 @@ export default function App() {
           </header>
         )}
 
+        <div className="page-fill">
         {page === "toolkit" && <Toolkit />}
         {page === "bench" && <Bench />}
         {page === "monitor" && <Monitor customers={customers} />}
         {page === "settings" && (
           <SettingsPage
             settings={settings}
+            onImported={refresh}
             onSave={async (patch) => {
               const next = await api<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(patch) });
               setSettings(next);
@@ -295,43 +435,94 @@ export default function App() {
           />
         )}
 
-        {page === "sessions" && (
-          <div className={`workspace ${aiOpen ? "" : "no-ai"} ${sideOpen ? "" : "no-side"} ${editor ? "with-edit" : ""}`}>
-            {sideOpen && <Sidebar
-              customers={customers}
-              onOpen={openSession}
-              onNewCustomer={() => setNewCust(true)}
-              onNewSession={(c) => setSessForm({ customer: c })}
-              onEditSession={(c, s) => setSessForm({ customer: c, session: s })}
-              onDuplicate={async (s) => { await api(`/api/sessions/${s.id}/duplicate`, { method: "POST" }); refresh(); }}
-              onVault={async (s) => {
-                const name = window.prompt("Save as credential", `${s.name} vault`);
-                if (!name) return;
-                await api(`/api/sessions/${s.id}/vault`, { method: "POST", body: JSON.stringify({ name }) });
-                refresh();
-              }}
-              onDelete={async (s) => {
-                if (!window.confirm(`Delete session ${s.name}?`)) return;
-                await api(`/api/sessions/${s.id}`, { method: "DELETE" });
-                refresh();
-              }}
-              onQuickConnect={() => setSessForm({})}
-            />}
-            {editor && (
-              <EditorDrawer
-                title={editor.title}
-                text={editor.text}
-                vendor={activeTab?.session.device_type}
-                customerId={activeTab?.session.customer_id}
-                canSend={Boolean(activeTab)}
-                onClose={() => setEditor(null)}
-                onSend={(text) => {
-                  if (activeTab) sendToTab(activeTab.tabId, text.endsWith("\n") ? text : text + "\n");
-                }}
-                onAsk={(text) => askAi(`What is this?\n\n${text}`)}
-              />
+        <div
+            className="workspace docked"
+            style={{
+              ...workspaceGrid(dock, Boolean(editor)),
+              display: page === "sessions" ? "grid" : "none",
+            }}
+            onDragOver={(e) => { if (dragFrame) e.preventDefault(); }}
+          >
+            {dragFrame && (
+              <div className="dock-zones">
+                {(["left", "right", "top", "bottom"] as Edge[]).map((edge) => (
+                  <button
+                    key={edge}
+                    className={`dock-zone ${edge}`}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      patchDock(dragFrame, { edge, open: true });
+                      setDragFrame(null);
+                    }}
+                  >{edge}</button>
+                ))}
+              </div>
             )}
-            <section className="main">
+            {dock.sessions.open && (
+              <div className="frame-slot" style={cellStyle("sessions", dock, Boolean(editor))}>
+                <Sidebar
+                  customers={customers}
+                  activeWorkset={workset}
+                  onOpen={openSession}
+                  onSelectFolder={selectFolder}
+                  onOpenFolder={openFolder}
+                  onNewCustomer={() => setNewCust(true)}
+                  onNewSession={(c, folder) => setSessForm({ customer: c, folder })}
+                  onEditSession={(c, s) => setSessForm({ customer: c, session: s })}
+                  onDuplicate={async (s) => { await api(`/api/sessions/${s.id}/duplicate`, { method: "POST" }); refresh(); }}
+                  onVault={async (s) => {
+                    const name = window.prompt("Save as credential", `${s.name} vault`);
+                    if (!name) return;
+                    await api(`/api/sessions/${s.id}/vault`, { method: "POST", body: JSON.stringify({ name }) });
+                    refresh();
+                  }}
+                  onDelete={async (s) => {
+                    if (!window.confirm(`Delete session ${s.name}?`)) return;
+                    await api(`/api/sessions/${s.id}`, { method: "DELETE" });
+                    refresh();
+                  }}
+                  onRenameFolder={async (c, fromFolder, toFolder) => {
+                    await api("/api/folders/rename", { method: "POST", body: JSON.stringify({ customer_id: c.id, from_folder: fromFolder, to_folder: toFolder }) });
+                    refresh();
+                  }}
+                  onQuickConnect={() => setSessForm({})}
+                  onDockStart={() => setDragFrame("sessions")}
+                />
+                <div
+                  className={`splitter ${dock.sessions.edge === "top" || dock.sessions.edge === "bottom" ? "y" : "x"} ${dock.sessions.edge}`}
+                  onMouseDown={(e) => beginResize(e, "sessions", dock.sessions.edge)}
+                />
+              </div>
+            )}
+            {editor && (
+              <div className="frame-slot" style={cellStyle("editor", dock, true)}>
+                <div
+                  className="frame-head slim"
+                  draggable
+                  onDragStart={() => setDragFrame("editor")}
+                  onDragEnd={() => setDragFrame(null)}
+                  title="Drag to dock the editor"
+                />
+                <EditorDrawer
+                  title={editor.title}
+                  text={editor.text}
+                  vendor={activeTab?.session.device_type}
+                  customerId={activeTab?.session.customer_id}
+                  canSend={Boolean(activeTab)}
+                  onClose={() => setEditor(null)}
+                  onSend={(text) => {
+                    if (activeTab) sendToTab(activeTab.tabId, text.endsWith("\n") ? text : text + "\n");
+                  }}
+                  onAsk={(text) => askAi(`What is this?\n\n${text}`)}
+                />
+                <div
+                  className={`splitter ${dock.editor.edge === "top" || dock.editor.edge === "bottom" ? "y" : "x"} ${dock.editor.edge}`}
+                  onMouseDown={(e) => beginResize(e, "editor", dock.editor.edge)}
+                />
+              </div>
+            )}
+            <section className="main" style={cellStyle("main", dock, Boolean(editor))}>
               <div
                 className={`tabs ${dropOn ? "drop-on" : ""}`}
                 onDragOver={(e) => {
@@ -357,7 +548,7 @@ export default function App() {
                   } catch { /* malformed payload — ignore rather than crash the strip */ }
                 }}
               >
-                {tabs.map((t) => (
+                {folderTabs.map((t) => (
                   <div
                     key={t.tabId}
                     className={`tab ${t.tabId === active ? "active" : ""} ${t.selected ? "picked" : ""} ${dragTab === t.tabId ? "dragging" : ""}`}
@@ -382,7 +573,7 @@ export default function App() {
                     title="Drag to reorder"
                   >
                     <span className="dot" style={{ background: customers.find((c) => c.name === t.customerName)?.color || chrome.accent }} />
-                    {t.customerName} · {t.session.name}
+                    {t.session.name}
                     <button className="close" onClick={(e) => { e.stopPropagation(); closeTab(t.tabId); }}>×</button>
                   </div>
                 ))}
@@ -403,30 +594,39 @@ export default function App() {
                 </div>
               </div>
 
-              {tabs.length === 0 ? (
+              {folderTabs.length === 0 && (
                 <div className="empty">
                   <div>
-                    <h2>Open a session</h2>
-                    <p>Lab simulators work offline. Real SSH remembers user/password per customer.</p>
+                    <h2>{workset ? "No tabs in this folder" : "Open a session"}</h2>
+                    <p>{workset ? "Open devices from the explorer, or switch folder. Other folders can stay connected in the background." : "Lab simulators work offline. Folders in the explorer keep each site’s tabs separate."}</p>
                   </div>
                 </div>
-              ) : (
-                <div className={`panes ${layout}`}>
-                  {visible.map((t) => (
-                    <div className="pane" key={t.tabId} onClick={() => setActive(t.tabId)}>
-                      <ErrorBoundary label={`${t.customerName} · ${t.session.name}`}>
-                        <TerminalPane
-                          tab={t}
-                          theme={THEMES.find((x) => x.id === settings?.theme) || THEMES[0]}
-                          fontSize={settings?.font_size || 14}
-                          fontFamily={settings?.font_family}
-                          active={t.tabId === active}
-                          onEditText={(text, title) => setEditor({ text, title })}
-                          onAskAi={askAi}
-                        />
-                      </ErrorBoundary>
-                    </div>
-                  ))}
+              )}
+              {tabs.length > 0 && (
+                <div className={`panes ${layout}`} style={{ display: folderTabs.length ? undefined : "none" }}>
+                  {tabs.map((t) => {
+                    const shown = visible.some((v) => v.tabId === t.tabId);
+                    return (
+                      <div
+                        className="pane"
+                        key={t.tabId}
+                        style={{ display: shown ? undefined : "none" }}
+                        onClick={() => setActive(t.tabId)}
+                      >
+                        <ErrorBoundary label={`${t.customerName} · ${t.session.name}`}>
+                          <TerminalPane
+                            tab={t}
+                            theme={THEMES.find((x) => x.id === settings?.theme) || THEMES[0]}
+                            fontSize={settings?.font_size || 14}
+                            fontFamily={settings?.font_family}
+                            active={t.tabId === active}
+                            onEditText={(text, title) => setEditor({ text, title })}
+                            onAskAi={askAi}
+                          />
+                        </ErrorBoundary>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
@@ -441,38 +641,69 @@ export default function App() {
                 </div>
               )}
 
-              {/* One bar where four used to stack. */}
-              <CommandBar
-                mode={barMode}
-                onMode={setBarMode}
-                tab={activeTab}
-                usage={usage}
-                onUsage={loadUsage}
-                onEdit={(text, title) => setEditor({ text, title })}
-                snippets={deviceSnips}
-                pack={snipPack}
-                onPack={setSnipPack}
-                onAddChip={() => setSnipForm({ name: "", command: "", device_types: dtype ? [dtype] : [] })}
-                onEditChip={(s) => setSnipForm({ id: s.id, name: s.name, command: s.command, device_types: s.device_types })}
-                onDeleteChip={async (s) => {
-                  if (!s.id) return;
-                  await api(`/api/snippets/${s.id}`, { method: "DELETE" });
-                  refresh();
-                }}
-                scope={scope}
-                onScope={setScope}
-                castTargets={targetTabs().length}
-                onCast={(text) => {
-                  if (!text.trim()) return;
-                  for (const t of targetTabs()) sendToTab(t.tabId, text.endsWith("\n") ? text : text + "\n");
-                }}
-              />
-
               {subnetOpen && <SubnetOverlay onClose={() => setSubnetOpen(false)} />}
             </section>
-            {aiOpen && <AiPanel tab={activeTab} ask={aiAsk} />}
+            {dock.commandbar.open && (
+              <div
+                className="frame-slot cbar-slot"
+                style={cellStyle("commandbar", dock, Boolean(editor))}
+              >
+                <div
+                  className="frame-head slim"
+                  draggable
+                  onDragStart={() => setDragFrame("commandbar")}
+                  onDragEnd={() => setDragFrame(null)}
+                  title="Drag to dock the command bar"
+                />
+                <CommandBar
+                  mode={barMode}
+                  onMode={setBarMode}
+                  tab={activeTab}
+                  usage={usage}
+                  onUsage={loadUsage}
+                  onEdit={(text, title) => setEditor({ text, title })}
+                  snippets={deviceSnips}
+                  pack={snipPack}
+                  onPack={setSnipPack}
+                  onAddChip={() => setSnipForm({ name: "", command: "", device_types: dtype ? [dtype] : [] })}
+                  onEditChip={(s) => setSnipForm({ id: s.id, name: s.name, command: s.command, device_types: s.device_types })}
+                  onDeleteChip={async (s) => {
+                    if (!s.id) return;
+                    await api(`/api/snippets/${s.id}`, { method: "DELETE" });
+                    refresh();
+                  }}
+                  scope={scope}
+                  onScope={setScope}
+                  castTargets={targetTabs().length}
+                  onCast={(text) => {
+                    if (!text.trim()) return;
+                    for (const t of targetTabs()) sendToTab(t.tabId, text.endsWith("\n") ? text : text + "\n");
+                  }}
+                />
+                <div
+                  className={`splitter ${dock.commandbar.edge === "top" || dock.commandbar.edge === "bottom" ? "y" : "x"} ${dock.commandbar.edge}`}
+                  onMouseDown={(e) => beginResize(e, "commandbar", dock.commandbar.edge)}
+                />
+              </div>
+            )}
+            {dock.ai.open && (
+              <div className="frame-slot" style={cellStyle("ai", dock, Boolean(editor))}>
+                <div
+                  className="frame-head"
+                  draggable
+                  onDragStart={() => setDragFrame("ai")}
+                  onDragEnd={() => setDragFrame(null)}
+                  title="Drag to dock the AI panel"
+                >AI{activeTab ? ` · ${activeTab.session.name}` : ""}</div>
+                <AiPanel tab={activeTab} ask={aiAsk} />
+                <div
+                  className={`splitter ${dock.ai.edge === "top" || dock.ai.edge === "bottom" ? "y" : "x"} ${dock.ai.edge}`}
+                  onMouseDown={(e) => beginResize(e, "ai", dock.ai.edge)}
+                />
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       <Palette open={palette} onClose={() => setPalette(false)} items={paletteItems} />
@@ -491,6 +722,7 @@ export default function App() {
           customers={customers}
           customer={sessForm.customer}
           session={sessForm.session}
+          folder={sessForm.folder}
           onClose={() => setSessForm(null)}
           onSave={async (body) => {
             if (sessForm.session) {

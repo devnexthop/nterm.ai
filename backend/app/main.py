@@ -26,6 +26,7 @@ from .db import Base, SessionLocal, engine, get_db, migrate_schema
 from .device_profiles import PROFILES
 from .extensions import USER_PACK, enabled_snippets, ensure_user_pack, sync_builtin
 from . import importers
+from . import exporters
 from .llm import act as ai_act
 from .llm.providers import guess_provider, list_models, suggest_base_url
 from .mcp_server import router as mcp_router
@@ -102,6 +103,7 @@ def session_out(row: SavedSession) -> dict:
         "notes": row.notes,
         "logging_enabled": row.logging_enabled,
         "post_login": row.post_login,
+        "folder": row.folder or "",
         "credential_id": row.credential_id,
         "baud": row.baud or 9600,
         "created_at": row.created_at,
@@ -240,6 +242,7 @@ def create_session(body: SessionIn, db: Session = Depends(get_db)):
         notes=body.notes,
         logging_enabled=body.logging_enabled,
         post_login=body.post_login,
+        folder=(body.folder or "").strip()[:400],
         credential_id=cid,
         baud=body.baud or 9600,
     )
@@ -303,6 +306,7 @@ def duplicate_session(sid: int, db: Session = Depends(get_db)):
         notes=row.notes,
         logging_enabled=row.logging_enabled,
         post_login=row.post_login,
+        folder=row.folder or "",
         credential_id=row.credential_id,
         baud=row.baud or 9600,
     )
@@ -1021,6 +1025,7 @@ class ImportPreviewIn(BaseModel):
     content: str = ""
     format: str = "auto"
     filename: str = ""
+    passphrase: str = ""
 
 
 class ImportedSessionIn(BaseModel):
@@ -1031,17 +1036,75 @@ class ImportedSessionIn(BaseModel):
     username: str = ""
     device_type: str = "generic"
     group: str = ""
+    folder: str = ""
+    customer_name: str = ""
+    customer_color: str = ""
     baud: int = 9600
+    jump_host: str = ""
+    notes: str = ""
+    post_login: str = ""
+    logging_enabled: bool = True
+    password: str = ""
+    enable_password: str = ""
+    private_key: str = ""
 
 
 class ImportCommitIn(BaseModel):
     sessions: list[ImportedSessionIn] = Field(default_factory=list)
     customer_name: str = ""
+    include_secrets: bool = False
+
+
+class ExportVaultIn(BaseModel):
+    passphrase: str
+
+
+class FolderRenameIn(BaseModel):
+    customer_id: int
+    from_folder: str
+    to_folder: str
+
+
+@app.get("/api/export/sessions")
+def export_sessions(db: Session = Depends(get_db)):
+    """Download the customer + folder tree. Structure only — no secrets."""
+    customers = db.query(Customer).order_by(Customer.name).all()
+    return exporters.build_tree(customers, vault=False)
+
+
+@app.post("/api/export/sessions/vault")
+def export_sessions_vault(body: ExportVaultIn, db: Session = Depends(get_db)):
+    """Passphrase-wrapped backup including decrypted session secrets."""
+    customers = db.query(Customer).order_by(Customer.name).all()
+    tree = exporters.build_tree(customers, vault=True)
+    try:
+        return exporters.wrap_vault(tree, body.passphrase)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.post("/api/folders/rename")
+def rename_folder(body: FolderRenameIn, db: Session = Depends(get_db)):
+    """Rename a site folder under one customer. Nested children keep the new prefix."""
+    src = (body.from_folder or "").strip().strip("/")
+    dst = (body.to_folder or "").strip().strip("/")
+    if not src:
+        raise HTTPException(400, "from_folder is required")
+    rows = db.query(SavedSession).filter(SavedSession.customer_id == body.customer_id).all()
+    n = 0
+    for row in rows:
+        folder = (row.folder or "").strip().strip("/")
+        if folder == src or folder.startswith(src + "/"):
+            row.folder = (dst + folder[len(src):]).strip("/") if dst else folder[len(src):].lstrip("/")
+            n += 1
+    db.commit()
+    audit("folder.renamed", customer_id=body.customer_id, from_folder=src, to_folder=dst, sessions=n)
+    return {"ok": True, "updated": n}
 
 
 @app.post("/api/import/preview")
 def import_preview(body: ImportPreviewIn):
-    """Parse a SecureCRT / PuTTY / ssh_config / CSV export without saving it.
+    """Parse a SecureCRT / PuTTY / ssh_config / CSV / NTerm export without saving it.
 
     The preview step is not a nicety. An import writes hundreds of rows into a
     credential vault, and the operator has to see what the parser made of their
@@ -1049,6 +1112,16 @@ def import_preview(body: ImportPreviewIn):
     """
     if len(body.content.encode("utf-8", "ignore")) > importers.MAX_CONTENT_BYTES:
         raise HTTPException(413, "That file is too large to import")
+    native = exporters.parse_json(body.content)
+    if native and exporters.is_wrapped(native):
+        if not body.passphrase:
+            raise HTTPException(400, "Encrypted backup — enter the passphrase, then preview again")
+        try:
+            native = exporters.unwrap_vault(native, body.passphrase)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        rows = exporters.tree_to_rows(native)
+        return {"format": "nterm", "kind": native.get("kind"), "count": len(rows), "sessions": rows, "has_secrets": native.get("kind") == "vault"}
     fmt = importers.normalize_format(body.format) or "auto"
     if fmt == "auto":
         fmt = importers.detect(body.filename, body.content)
@@ -1058,16 +1131,16 @@ def import_preview(body: ImportPreviewIn):
         raise HTTPException(400, str(exc))
     if len(rows) > importers.MAX_SESSIONS:
         raise HTTPException(400, f"Import is limited to {importers.MAX_SESSIONS} sessions at a time")
-    return {"format": fmt, "count": len(rows), "sessions": rows}
+    return {"format": fmt, "count": len(rows), "sessions": rows, "has_secrets": fmt == "nterm" and any(r.get("password") for r in rows)}
 
 
 @app.post("/api/import/commit")
 def import_commit(body: ImportCommitIn, db: Session = Depends(get_db)):
     """Save a previewed import as customers and sessions.
 
-    No credential fields are read from the request at all: an import moves
-    structure, and a password still has to be typed into NTerm to reach the
-    vault.
+    Foreign-tool imports never send secrets. Native NTerm vault backups may,
+    and only when include_secrets is true — the operator opted in at export
+    and again at import.
     """
     if not body.sessions:
         raise HTTPException(400, "Nothing to import")
@@ -1087,25 +1160,35 @@ def import_commit(body: ImportCommitIn, db: Session = Depends(get_db)):
     skipped = 0
     for item in body.sessions:
         host = item.host.strip()[:255]
-        if not host:
+        kind = item.kind if item.kind in ("ssh", "telnet", "serial", "local", "simulator") else "ssh"
+        if kind in ("ssh", "telnet") and not host:
             skipped += 1
             continue
-        # An explicitly chosen customer wins. Otherwise the *top* folder the
-        # session came from becomes its customer, so one SecureCRT tree arrives
-        # filed the way the operator already had it instead of as a flat pile.
-        # Only the top level: "Acme/Plant Floor/IDF3" is one customer with a
-        # deep folder, not three customers.
-        cname = (chosen or item.group.strip().split("/")[0].strip() or "Imported")[:200]
+        group = item.group.strip()
+        folder = (item.folder or "").strip().strip("/")[:400]
+        if not folder and group:
+            parts = [p.strip() for p in group.split("/") if p.strip()]
+            folder = "/".join(parts if chosen else parts[1:])[:400]
+        # An explicitly chosen customer wins. Otherwise native exports name the
+        # customer; SecureCRT-style groups use the top folder as the customer
+        # and keep the rest as the site folder.
+        cname = (
+            chosen
+            or (item.customer_name or "").strip()
+            or (group.split("/")[0].strip() if group else "")
+            or "Imported"
+        )[:200]
         customer = known.get(cname.lower())
         if customer is None:
-            customer = Customer(name=cname, notes="Created by session import.")
+            customer = Customer(
+                name=cname,
+                color=(item.customer_color or "#ffb020")[:20],
+                notes="Created by session import.",
+            )
             db.add(customer)
             db.flush()
             known[cname.lower()] = customer
-        name = (item.name.strip() or host)[:200]
-        group = item.group.strip()
-        # Re-running an import after fixing one row is normal; it must not
-        # double the vault.
+        name = (item.name.strip() or host or "session")[:200]
         key = (customer.id, name.lower(), host.lower())
         if key in seen:
             skipped += 1
@@ -1114,14 +1197,22 @@ def import_commit(body: ImportCommitIn, db: Session = Depends(get_db)):
         row = SavedSession(
             customer_id=customer.id,
             name=name,
-            kind=item.kind if item.kind in ("ssh", "telnet", "serial") else "ssh",
+            kind=kind,
             device_type=item.device_type if item.device_type in PROFILES else "generic",
             host=host,
             port=item.port if 1 <= item.port <= 65535 else 22,
             username=item.username.strip()[:200],
-            notes=f"Imported from {group}" if group and group != cname else "Imported",
+            jump_host=(item.jump_host or "")[:255],
+            notes=(item.notes or (f"Imported from {group}" if group and group != cname else "Imported"))[:4000],
+            post_login=item.post_login or "",
+            logging_enabled=item.logging_enabled,
+            folder=folder,
             baud=item.baud if 50 <= item.baud <= 4_000_000 else 9600,
         )
+        if body.include_secrets:
+            row.password_enc = encrypt(item.password or None)
+            row.enable_password_enc = encrypt(item.enable_password or None)
+            row.private_key_enc = encrypt(item.private_key or None)
         db.add(row)
         created.append(row)
     db.commit()

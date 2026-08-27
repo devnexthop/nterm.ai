@@ -29,6 +29,7 @@ class SessionIn(BaseModel):
     notes: str = ""
     logging_enabled: bool = True
     post_login: str = ""
+    folder: str = ""
     credential_id: int | None = None
     baud: int = 9600
     save_as_credential: str | None = None
@@ -50,6 +51,7 @@ class SessionOut(BaseModel):
     notes: str
     logging_enabled: bool
     post_login: str
+    folder: str = ""
     credential_id: int | None = None
     baud: int = 9600
     created_at: datetime
@@ -69,6 +71,7 @@ class SessionUpdate(BaseModel):
     notes: str | None = None
     logging_enabled: bool | None = None
     post_login: str | None = None
+    folder: str | None = None
     customer_id: int | None = None
     credential_id: int | None = None
     baud: int | None = None

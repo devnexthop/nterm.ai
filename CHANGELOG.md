@@ -6,6 +6,30 @@ The version you are running is shown in **Settings → About** and at `/api/heal
 Both report the release number *and* the exact commit it was built from, so
 "which build is this?" always has an answer.
 
+## [0.3.0] — 2026-08-27
+
+A VS Code-shaped workbench: named site folders, a native session tree, and
+frames you can dock.
+
+### Added
+- **Site folders.** Sessions live in nested folders under a customer (Plant,
+  Datacenter, IDF-3). The folder you have selected owns the tab strip. Switch
+  folder and those tabs hide; the SSH sessions stay connected. Open all in
+  folder restores them. Create, rename, or delete folders from the explorer.
+- **Native export and import.** Settings → Import / Export downloads the tree
+  as JSON (`nterm_export: 1`). Structure files never include passwords. An
+  encrypted backup can, behind a passphrase (PBKDF2 + Fernet), so you can move
+  a vault between your own machines. SecureCRT, PuTTY, ssh_config and CSV
+  import still work — structure only.
+- **Dockable frames.** Drag Explorer, AI, the editor or the command bar to
+  left / right / top / bottom and resize. The layout is remembered as
+  `nterm.layout`.
+
+### Changed
+- Chrome is quieter. Accent is for the live LED, risk, and Confirm — not for
+  every selected tab and rail icon.
+- The explorer is a folder tree instead of a flat customer list.
+
 ## [0.2.0] — 2026-08-27
 
 The first release under Apache-2.0.

@@ -25,7 +25,7 @@ from urllib.parse import unquote
 
 from .device_profiles import PROFILES
 
-FORMATS = ("securecrt", "putty", "sshconfig", "csv")
+FORMATS = ("securecrt", "putty", "sshconfig", "csv", "nterm")
 
 # A pasted inventory is text an operator typed or exported; anything past these
 # bounds is a mistake or an attack, not a session list. Enforced by the caller.
@@ -561,11 +561,25 @@ def parse_csv(content: str, filename: str = "") -> list[dict]:
 # dispatch
 # --------------------------------------------------------------------------
 
+def parse_nterm(content: str, filename: str = "") -> list[dict]:
+    from . import exporters
+
+    doc = exporters.parse_json(content)
+    if not doc:
+        raise ValueError("That file is not an NTerm export")
+    if exporters.is_wrapped(doc):
+        raise ValueError("Encrypted backup — enter the passphrase, then preview again")
+    if not exporters.is_nterm_tree(doc):
+        raise ValueError("That NTerm file is not a session tree")
+    return exporters.tree_to_rows(doc)
+
+
 _PARSERS = {
     "securecrt": parse_securecrt,
     "putty": parse_putty,
     "sshconfig": parse_ssh_config,
     "csv": parse_csv,
+    "nterm": parse_nterm,
 }
 
 _FORMAT_ALIASES = {
@@ -581,7 +595,8 @@ _FORMAT_ALIASES = {
     "sshconf": "sshconfig",
     "openssh": "sshconfig",
     "config": "sshconfig",
-    "tsv": "csv",
+    "nterm": "nterm",
+    "json": "nterm",
 }
 
 
@@ -597,6 +612,9 @@ def detect(filename: str, content: str) -> str:
 
     # Content signatures first: they are definitive, and an operator who saved
     # a PuTTY export as "sessions.txt" should still get the right parser.
+    from . import exporters
+    if exporters.parse_json(content or ""):
+        return "nterm"
     if "simontatham" in lowered or "windows registry editor" in lowered or lowered.startswith("regedit4"):
         return "putty"
     if re.search(r'^\s*[A-Z]:"[^"]*"=', head, re.M):

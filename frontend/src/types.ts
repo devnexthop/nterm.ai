@@ -26,6 +26,7 @@ export interface SavedSession {
   notes: string;
   logging_enabled: boolean;
   post_login: string;
+  folder: string;
   credential_id: number | null;
   baud: number;
   created_at: string;

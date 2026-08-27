@@ -55,7 +55,7 @@ cd frontend
 npm install && npm run dev
 ```
 
-Desktop window:
+Desktop window (dev — expects a running engine):
 
 ```bash
 cd desktop
@@ -63,7 +63,40 @@ npm install
 npm start
 ```
 
-Installers (Windows EXE / Mac DMG) come later. Local test is Docker.
+## Desktop app (Mac DMG / Windows EXE)
+
+NTerm ships as a native app: Electron opens a window; a bundled Python engine runs locally on **127.0.0.1:8787**. No Docker required.
+
+### Build (Mac)
+
+Needs **Node.js 22+**, **Python 3.12** (PyInstaller does not support 3.14 yet), and **uv** recommended if Homebrew Python’s `venv` is broken:
+
+```bash
+git clone https://github.com/devnexthop/nterm.ai.git
+cd nterm.ai
+./scripts/package-desktop.sh
+```
+
+Output: `desktop/release/NTerm-0.1.0-mac-arm64.dmg` (and `.zip`).
+
+Install: open the DMG, drag **NTerm** to Applications. The build is **unsigned** — first launch: right-click → **Open**, or `xattr -cr /Applications/NTerm.app`.
+
+**Vault location (desktop):** `~/Library/Application Support/NTerm/data/` — separate from Docker’s `./data`. Back it up like a password database.
+
+Stop Docker before launching the desktop app if it is using port 8787.
+
+### Build (Windows)
+
+Run on a Windows machine (PyInstaller bundles are OS-specific):
+
+```bash
+./scripts/package-desktop.sh
+# or: cd desktop && npm run dist:win
+```
+
+Output: `desktop/release/NTerm-0.1.0-win-x64.exe` (NSIS installer).
+
+Vault: `%APPDATA%\NTerm\data\`
 
 ## Keyboard
 

@@ -1,8 +1,8 @@
 # Deploying NTerm
 
-Docker is the supported path today. Native installers (Windows EXE, macOS DMG) come later.
+**Docker** is the default for server-style runs. **Native installers** (Mac DMG, Windows EXE) are built from the same repo — see [Desktop app](#desktop-app) below.
 
-## Quick start
+## Quick start (Docker)
 
 ```bash
 git clone https://github.com/devnexthop/nterm.ai.git
@@ -120,3 +120,46 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 | Sessions vanished | `./data` was deleted or not mounted — check the compose `volumes:` |
 | Share button disabled | No relay token. Settings → Sharing |
 | Bench feed won't pull | Settings → Bench → Pull now reports the reason; NTerm falls back to built-in |
+
+## Desktop app
+
+Electron shell + PyInstaller-bundled engine. Binds **127.0.0.1:8787** only. Credential vault is per-user, not `./data` in the repo.
+
+| OS | Vault path |
+|---|---|
+| macOS | `~/Library/Application Support/NTerm/data/` |
+| Windows | `%APPDATA%\NTerm\data\` |
+| Linux (dev) | `~/.nterm/` |
+
+### Build Mac DMG
+
+From repo root on macOS:
+
+```bash
+./scripts/package-desktop.sh
+```
+
+Prerequisites: Node.js 22+, Python 3.12 (not 3.14 — PyInstaller pin), Xcode CLT. If `python3 -m venv` fails (Homebrew expat issue), install [uv](https://github.com/astral-sh/uv) — the script uses it automatically.
+
+Artifacts: `desktop/release/NTerm-<version>-mac-arm64.dmg`
+
+First launch of an unsigned build: right-click **NTerm.app** → **Open**, or `xattr -cr /Applications/NTerm.app`.
+
+### Build Windows EXE
+
+Must run **on Windows** (cannot cross-compile the Python engine from Mac):
+
+```bash
+./scripts/package-desktop.sh
+```
+
+Artifact: `desktop/release/NTerm-<version>-win-x64.exe`
+
+### Desktop troubleshooting
+
+| Symptom | Cause |
+|---|---|
+| Port 8787 in use | Docker NTerm or dev server still running — stop it before launching the app |
+| "NTerm failed to start" | Engine did not reach `/api/health` in time — check Console or run `nterm-engine` from `NTerm.app/Contents/Resources/engine/` |
+| Gatekeeper blocks app | Unsigned build — use right-click Open or `xattr -cr` |
+| Empty vault after switching from Docker | Desktop and Docker use different vault paths (by design) |

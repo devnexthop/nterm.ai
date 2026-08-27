@@ -28,8 +28,10 @@ function recognizeKey(raw: string, currentBase: string): { provider?: string; ba
 export default function SettingsPage({
   settings,
   onSave,
+  onImported,
 }: {
   settings: Settings | null;
+  onImported?: () => void;
   onSave: (s: Partial<Settings> & {
     openai_api_key?: string;
     anthropic_api_key?: string;
@@ -57,7 +59,8 @@ export default function SettingsPage({
   const [imp, setImp] = useState<{
     filename: string; content: string; format: string;
     rows: any[]; busy: boolean; err: string; done: string; customer: string;
-  }>({ filename: "", content: "", format: "auto", rows: [], busy: false, err: "", done: "", customer: "" });
+    passphrase: string; hasSecrets: boolean; includeSecrets: boolean;
+  }>({ filename: "", content: "", format: "auto", rows: [], busy: false, err: "", done: "", customer: "", passphrase: "", hasSecrets: false, includeSecrets: false });
   const [credForm, setCredForm] = useState<{
     id?: number; name: string; username: string; password: string;
     enable_password: string; device_type: string; notes: string;
@@ -210,7 +213,7 @@ export default function SettingsPage({
     { id: "sharing" as const, label: "Sharing", led: settings?.relay_configured ? "var(--ok)" : "var(--pending)" },
     { id: "vault" as const, label: "Vault", led: "" },
     { id: "credentials" as const, label: "Credentials", led: creds.length ? "var(--ok)" : "var(--muted)" },
-    { id: "import" as const, label: "Import", led: "" },
+    { id: "import" as const, label: "Import / Export", led: "" },
     { id: "about" as const, label: "About", led: "" },
   ];
 
@@ -633,19 +636,52 @@ export default function SettingsPage({
         {tab === "import" && (
           <>
             <div className="set-cap">
-              <h1>Import sessions</h1>
-              <span className="n">SecureCRT · PuTTY · ssh_config · CSV</span>
+              <h1>Import / Export</h1>
+              <span className="n">Your tree · SecureCRT · PuTTY · ssh_config · CSV</span>
             </div>
             <p style={{ color: "var(--muted)", margin: 0, maxWidth: "66ch" }}>
-              Bring your existing sessions across instead of retyping them. NTerm reads the
-              structure — hosts, ports, usernames, folders — and <strong>never reads stored
-              passwords</strong> from another tool's file. You will re-enter those once, as
-              credentials.
+              Export the customer and folder tree you built. Structure files never include
+              passwords. An encrypted backup can, behind a passphrase, so you can move a vault
+              between your own machines.
+            </p>
+            <div className="row">
+              <button className="primary" onClick={async () => {
+                try {
+                  const tree = await api<Record<string, unknown>>("/api/export/sessions");
+                  const blob = new Blob([JSON.stringify(tree, null, 2)], { type: "application/json" });
+                  const a = document.createElement("a");
+                  a.href = URL.createObjectURL(blob);
+                  a.download = "nterm-sessions.json";
+                  a.click();
+                  URL.revokeObjectURL(a.href);
+                } catch (e: any) { window.alert(e.message || String(e)); }
+              }}>Download tree</button>
+              <button className="ghost" onClick={async () => {
+                const pass = window.prompt("Passphrase for encrypted backup (min 8 characters)");
+                if (!pass) return;
+                try {
+                  const tree = await api<Record<string, unknown>>("/api/export/sessions/vault", {
+                    method: "POST", body: JSON.stringify({ passphrase: pass }),
+                  });
+                  const blob = new Blob([JSON.stringify(tree, null, 2)], { type: "application/json" });
+                  const a = document.createElement("a");
+                  a.href = URL.createObjectURL(blob);
+                  a.download = "nterm-vault.json";
+                  a.click();
+                  URL.revokeObjectURL(a.href);
+                } catch (e: any) { window.alert(e.message || String(e)); }
+              }}>Encrypted backup…</button>
+            </div>
+
+            <p className="set-lbl">Import</p>
+            <p style={{ color: "var(--muted)", margin: 0, maxWidth: "66ch" }}>
+              Bring sessions from NTerm, SecureCRT, PuTTY, OpenSSH or CSV. Foreign tools are
+              structure only — stored passwords are never read from those files.
             </p>
 
             <div className="sched">
               <div className="fr"><span className="k">File</span><span className="v">
-                <input type="file" accept=".ini,.reg,.csv,.tsv,.txt,.conf,config"
+                <input type="file" accept=".ini,.reg,.csv,.tsv,.txt,.conf,.json,config"
                   onChange={async (e) => {
                     const f = e.target.files?.[0];
                     if (!f) return;
@@ -659,9 +695,14 @@ export default function SettingsPage({
                   <option value="securecrt">SecureCRT</option>
                   <option value="putty">PuTTY (.reg export)</option>
                   <option value="openssh">OpenSSH config</option>
+                  <option value="nterm">NTerm JSON</option>
                   <option value="csv">CSV / TSV</option>
                 </select>
                 <span className="stat">{imp.filename || "no file chosen"}</span>
+              </span></div>
+              <div className="fr"><span className="k">Passphrase</span><span className="v">
+                <input type="password" value={imp.passphrase} placeholder="only for encrypted NTerm backups"
+                  onChange={(e) => setImp((v) => ({ ...v, passphrase: e.target.value }))} />
               </span></div>
               <div className="fr"><span className="k">Customer</span><span className="v">
                 <input value={imp.customer} placeholder="leave blank to use the folder names in the file"
@@ -674,11 +715,14 @@ export default function SettingsPage({
                 onClick={async () => {
                   setImp((v) => ({ ...v, busy: true, err: "", done: "" }));
                   try {
-                    const r = await api<{ format: string; count: number; sessions: any[] }>(
+                    const r = await api<{ format: string; count: number; sessions: any[]; has_secrets?: boolean }>(
                       "/api/import/preview",
-                      { method: "POST", body: JSON.stringify({ content: imp.content, format: imp.format, filename: imp.filename }) },
+                      { method: "POST", body: JSON.stringify({
+                        content: imp.content, format: imp.format, filename: imp.filename,
+                        passphrase: imp.passphrase,
+                      }) },
                     );
-                    setImp((v) => ({ ...v, busy: false, rows: r.sessions, format: r.format }));
+                    setImp((v) => ({ ...v, busy: false, rows: r.sessions, format: r.format, hasSecrets: Boolean(r.has_secrets) }));
                   } catch (e: any) {
                     setImp((v) => ({ ...v, busy: false, err: e.message || String(e) }));
                   }
@@ -690,13 +734,18 @@ export default function SettingsPage({
                     try {
                       const r = await api<{ created: number; skipped: number }>(
                         "/api/import/commit",
-                        { method: "POST", body: JSON.stringify({ sessions: imp.rows, customer_name: imp.customer }) },
+                        { method: "POST", body: JSON.stringify({
+                          sessions: imp.rows,
+                          customer_name: imp.customer,
+                          include_secrets: imp.includeSecrets,
+                        }) },
                       );
                       setImp((v) => ({
                         ...v, busy: false, rows: [], content: "", filename: "",
                         done: `Imported ${r.created} session${r.created === 1 ? "" : "s"}` +
                               (r.skipped ? ` · ${r.skipped} already existed` : ""),
                       }));
+                      onImported?.();
                     } catch (e: any) {
                       setImp((v) => ({ ...v, busy: false, err: e.message || String(e) }));
                     }
@@ -709,6 +758,13 @@ export default function SettingsPage({
             {imp.rows.length > 0 && (
               <>
                 <p className="set-lbl">Preview — {imp.rows.length} session{imp.rows.length === 1 ? "" : "s"} · detected as {imp.format}</p>
+                {imp.hasSecrets && (
+                  <label className="row" style={{ color: "var(--muted)" }}>
+                    <input type="checkbox" checked={imp.includeSecrets}
+                      onChange={(e) => setImp((v) => ({ ...v, includeSecrets: e.target.checked }))} />
+                    Restore passwords from this backup
+                  </label>
+                )}
                 <div className="vault" style={{ maxHeight: 340, overflowY: "auto" }}>
                   {imp.rows.slice(0, 200).map((r, i) => (
                     <div className="vrow" key={i}>
@@ -718,6 +774,7 @@ export default function SettingsPage({
                           {r.kind} · {r.host}{r.kind !== "serial" ? `:${r.port}` : ""}
                           {r.username ? ` · ${r.username}` : ""}
                           {r.group ? ` · ${r.group}` : ""}
+                          {r.folder ? ` · ${r.folder}` : ""}
                         </div>
                       </div>
                       <span className="pill no">{r.device_type}</span>

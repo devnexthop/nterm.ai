@@ -60,6 +60,7 @@ def seed(db: Session) -> None:
                     device_type="cisco_ios",
                     host="10.10.10.2",
                     username="cisco",
+                    folder="Plant",
                     notes="Plant core. Set the real password in the session editor.",
                 ),
                 SavedSession(
@@ -69,6 +70,7 @@ def seed(db: Session) -> None:
                     device_type="fortinet",
                     host="10.10.10.1",
                     username="admin",
+                    folder="Plant",
                 ),
                 SavedSession(
                     customer_id=city.id,
@@ -77,6 +79,7 @@ def seed(db: Session) -> None:
                     device_type="paloalto",
                     host="10.8.8.10",
                     username="admin",
+                    folder="Datacenter",
                 ),
             ]
         )

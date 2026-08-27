@@ -61,12 +61,14 @@ export function SessionForm({
   customers,
   customer,
   session,
+  folder,
   onClose,
   onSave,
 }: {
   customers: Customer[];
   customer?: Customer;
   session?: SavedSession;
+  folder?: string;
   onClose: () => void;
   onSave: (body: Record<string, unknown>) => Promise<void>;
 }) {
@@ -85,6 +87,7 @@ export function SessionForm({
     notes: session?.notes || "",
     logging_enabled: session?.logging_enabled ?? true,
     post_login: session?.post_login || "",
+    folder: session?.folder || folder || "",
     credential_id: session?.credential_id || null as number | null,
     baud: session?.baud || 9600,
     save_as_credential: "",
@@ -178,6 +181,10 @@ export function SessionForm({
             </div>
           </>
         )}
+        <div className="field"><span>Folder</span>
+          <input value={form.folder} onChange={(e) => setForm({ ...form, folder: e.target.value })}
+            placeholder="Site or IDF — optional" />
+        </div>
         <div className="field"><span>Notes</span><input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
         <label className="row"><input type="checkbox" checked={form.logging_enabled} onChange={(e) => setForm({ ...form, logging_enabled: e.target.checked })} /> Save session text log</label>
         <div className="row" style={{ marginTop: 12 }}>
