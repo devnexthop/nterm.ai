@@ -1,6 +1,12 @@
 services:
   nterm:
-    build: .
+    # GIT_SHA is stamped into the image and reported by /api/health and
+    # Settings -> About. Without it every build says "dev" and there is no way
+    # to tell which one you are actually running.
+    build:
+      context: .
+      args:
+        GIT_SHA: ${GIT_SHA:-dev}
     image: nterm:local
     ports:
       - "127.0.0.1:8787:8787"
