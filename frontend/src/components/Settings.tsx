@@ -365,7 +365,7 @@ export default function SettingsPage({
               </span></div>
               <div className="fr"><span className="k">Preview</span><span className="v">
                 <span style={{ fontFamily: `"${fontFam}", ui-monospace, monospace`, fontSize: font, color: "var(--text)" }}>
-                  Gi0/1  10.14.9.1  YES NVRAM  up  down
+                  Gi0/1  192.0.2.1  YES NVRAM  up  down
                 </span>
               </span></div>
             </div>
