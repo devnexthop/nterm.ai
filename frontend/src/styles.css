@@ -11,8 +11,32 @@
   --danger: #f07178;
   --ok: #3dd68c;
   --pending: #ffb020;
-  --font: "DM Sans", system-ui, sans-serif;
+  --font: "Figtree", "DM Sans", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* ── Soft Rack ────────────────────────────────────────────────────────────
+     A four-step tonal ladder derived from the active theme, so depth comes
+     from lightness rather than a border on every edge. applyTheme() only ever
+     sets the five base colours; everything below follows from them, which is
+     what keeps all nine themes working without nine hand-authored palettes. */
+  --s0: var(--bg);
+  --s1: var(--panel);
+  --s2: var(--panel2);
+  --s3: color-mix(in srgb, var(--panel2) 88%, var(--text));
+  --outline: color-mix(in srgb, var(--border) 62%, transparent);
+  --outline-2: color-mix(in srgb, var(--border) 100%, transparent);
+
+  /* Accent containers. The board's amber is the "NTerm Amber" theme's accent;
+     every other theme drives these from its own. */
+  --acc: var(--accent);
+  --acc-cont: color-mix(in srgb, var(--acc) 18%, transparent);
+  --acc-cont-2: color-mix(in srgb, var(--acc) 28%, transparent);
+  --acc-ink: var(--on-accent);
+
+  --r-sm: 8px;
+  --r: 12px;
+  --r-lg: 18px;
+  --r-pill: 999px;
 }
 
 * { box-sizing: border-box; }
@@ -546,3 +570,462 @@ input:focus, select:focus, textarea:focus {
                          0 0 18px -2px color-mix(in srgb, var(--pending) 70%, transparent); }
 }
 @media (prefers-reduced-motion: reduce) { .share-btn.on { animation: none; } }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SOFT RACK
+   Layout: a left nav rail, a session header carrying only active-session
+   concerns, and one command bar where four stacked bars used to be.
+   Appended last so it wins ties against the older rules above.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+body { font-size: 14px; }
+
+/* ── shell ───────────────────────────────────────────────────────────────── */
+.app {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 74px 1fr;
+  grid-template-rows: 1fr;
+  background: var(--s0);
+}
+.app-body { display: grid; grid-template-rows: 52px 1fr; min-width: 0; min-height: 0; }
+.app-body.no-header { grid-template-rows: 1fr; }
+
+/* ── left rail ───────────────────────────────────────────────────────────── */
+.railnav {
+  background: var(--s1);
+  display: flex; flex-direction: column; align-items: center;
+  padding: 14px 0; gap: 4px; min-height: 0; overflow-y: auto;
+}
+.rail-mk { width: 26px; height: 26px; border-radius: 8px; display: block; margin-bottom: 14px; flex: 0 0 auto; }
+.ritem {
+  width: 58px; border: none; background: none; padding: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  color: var(--muted); flex: 0 0 auto;
+}
+.ritem .rp {
+  width: 100%; padding: 6px 0; border-radius: var(--r-pill);
+  display: flex; justify-content: center;
+  transition: background .18s ease;
+}
+.ritem svg { width: 19px; height: 19px; stroke: currentColor; stroke-width: 1.7; fill: none; }
+.ritem span { font-size: 10.5px; font-weight: 500; }
+.ritem:hover .rp { background: color-mix(in srgb, var(--text) 7%, transparent); }
+.ritem.on { color: var(--acc); }
+.ritem.on .rp { background: var(--acc-cont); }
+.ritem:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; border-radius: var(--r); }
+.rail-grow { flex: 1 1 auto; min-height: 8px; }
+
+/* ── session header ──────────────────────────────────────────────────────── */
+.sesshdr {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 16px; background: var(--s0); min-width: 0;
+}
+.sh-led {
+  width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto;
+  background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 16%, transparent);
+}
+.sh-led.off { background: var(--muted); box-shadow: none; }
+.sh-host {
+  font-size: 14.5px; font-weight: 600; letter-spacing: -.01em; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.sh-chip {
+  font-size: 11.5px; color: var(--muted); background: var(--s2);
+  padding: 3px 10px; border-radius: var(--r-pill); flex: 0 0 auto; white-space: nowrap;
+}
+.sh-sp { flex: 1 1 auto; }
+.sh-btn {
+  font-size: 12.5px; font-weight: 500; padding: 6px 14px;
+  border-radius: var(--r-pill); border: none; background: transparent;
+  color: var(--muted); flex: 0 0 auto;
+  transition: background .16s ease, color .16s ease;
+}
+.sh-btn:hover:not(:disabled) { background: var(--s2); color: var(--text); }
+.sh-btn:disabled { opacity: .4; cursor: default; }
+.sh-btn.on { background: var(--acc-cont); color: var(--acc); font-weight: 600; }
+.sh-hint {
+  font-family: var(--mono); font-size: 10.5px; color: var(--muted);
+  background: var(--s2); padding: 3px 9px; border-radius: 6px; flex: 0 0 auto;
+}
+
+/* ── workspace ───────────────────────────────────────────────────────────── */
+.workspace { background: var(--s0); }
+
+.sidebar, .ai-panel {
+  background: var(--s0); border: none; padding: 4px 10px 12px;
+}
+.ai-panel { padding: 0; }
+.side-head, .ai-head {
+  font-size: 12px; letter-spacing: 0; text-transform: none;
+  font-weight: 600; color: var(--muted); padding: 12px 12px 6px;
+}
+.customer { border-top: none; }
+.customer > header {
+  padding: 12px 12px 6px; font-size: 12px; font-weight: 600;
+  color: var(--muted); border-radius: var(--r-pill);
+}
+.customer > header:hover { background: transparent; color: var(--text); }
+.session-row {
+  padding: 8px 12px; border-radius: var(--r-pill); color: var(--muted);
+  font-size: 13px; transition: background .16s ease;
+}
+.session-row:hover { background: var(--s2); }
+.session-row.on, .session-row[data-on="1"] {
+  background: var(--acc-cont); color: var(--text); font-weight: 500;
+}
+
+/* ── main + tabs ─────────────────────────────────────────────────────────── */
+.main { background: var(--s1); border-radius: var(--r-lg) var(--r-lg) 0 0; }
+.tabs {
+  gap: 6px; padding: 11px 14px; border-bottom: none; background: transparent;
+}
+.tab {
+  gap: 8px; padding: 6px 13px; border: none; border-radius: var(--r-pill);
+  background: var(--s2); color: var(--muted); font-size: 12.5px;
+}
+.tab.active { background: var(--acc-cont); color: var(--text); font-weight: 500; }
+.tab.picked { outline: 2px solid var(--acc-cont-2); outline-offset: 1px; }
+.tab button.close { color: var(--muted); font-size: 13px; }
+.tab-add {
+  font-size: 12.5px; color: var(--muted); padding: 6px 13px;
+  border-radius: var(--r-pill); border: 1px dashed var(--outline-2); background: none;
+}
+.tab-add:hover { color: var(--text); border-color: var(--acc); }
+
+/* segmented layout control — lives with the tabs it acts on */
+.layout-seg {
+  margin-left: auto; display: flex; gap: 3px; flex: 0 0 auto;
+  background: var(--s2); padding: 3px; border-radius: var(--r-pill);
+}
+.layout-seg button {
+  font-size: 11.5px; font-weight: 500; padding: 5px 13px; color: var(--muted);
+  border: none; background: none; border-radius: var(--r-pill);
+}
+.layout-seg button.on { background: var(--acc); color: var(--acc-ink); font-weight: 600; }
+
+.panes { gap: 8px; background: transparent; padding: 0 14px; }
+.pane { background: var(--term-bg, #000); border-radius: var(--r); overflow: hidden; }
+
+/* ── the command bar ─────────────────────────────────────────────────────── */
+.cbar { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.cbar-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.cbar-modes {
+  display: flex; gap: 3px; background: var(--s2); padding: 3px;
+  border-radius: var(--r-pill); flex: 0 0 auto;
+}
+.cbar-modes button {
+  font-size: 11.5px; font-weight: 500; padding: 6px 14px; color: var(--muted);
+  border: none; background: none; border-radius: var(--r-pill);
+}
+.cbar-modes button.on { background: var(--acc); color: var(--acc-ink); font-weight: 600; }
+.cbar input, .cbar select {
+  background: var(--s2); border: 1px solid transparent; border-radius: var(--r-pill);
+  padding: 9px 16px; font-size: 13px; color: var(--text);
+}
+.cbar input { flex: 1; min-width: 0; font-family: var(--mono); font-size: 12.5px; }
+.cbar input:focus { border-color: var(--acc); background: var(--s3); }
+.cbar select { flex: 0 0 auto; font-family: var(--font); }
+.cbar-go {
+  font-size: 12.5px; font-weight: 600; background: var(--acc); color: var(--acc-ink);
+  border: none; padding: 9px 20px; border-radius: var(--r-pill); flex: 0 0 auto;
+}
+.cbar-go:disabled { opacity: .45; cursor: default; }
+.cbar-tok { font-family: var(--mono); font-size: 10.5px; color: var(--muted); flex: 0 0 auto; }
+.cbar-chips { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
+
+/* ── AI panel ────────────────────────────────────────────────────────────── */
+.ai-log { padding: 12px; gap: 9px; }
+.bubble {
+  padding: 10px 13px; border-radius: var(--r); background: var(--s2);
+  font-size: 12.5px; line-height: 1.55; border-left: none;
+}
+.bubble.user { background: var(--acc-cont); color: var(--text); border-bottom-right-radius: 5px; border-left: none; }
+.bubble.bot  { background: var(--s2); border-bottom-left-radius: 5px; border-left: none; }
+.ai-form { padding: 12px; border-top: 1px solid var(--outline); }
+.ai-form textarea { background: var(--s2); border: 1px solid transparent; border-radius: var(--r); }
+.ai-form textarea:focus { border-color: var(--acc); }
+
+/* ── controls ────────────────────────────────────────────────────────────── */
+input, select, textarea {
+  background: var(--s2); border: 1px solid transparent; border-radius: var(--r-sm);
+  padding: 9px 13px;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--acc); }
+.ghost, .primary, .danger {
+  border-radius: var(--r-pill); padding: 8px 16px; font-size: 12.5px; font-weight: 500;
+  border: 1px solid transparent; background: var(--s2); color: var(--muted);
+}
+.ghost:hover { background: var(--s3); color: var(--text); }
+.primary { background: var(--acc); color: var(--acc-ink); font-weight: 600; }
+.primary:disabled { opacity: .45; cursor: default; }
+.danger { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.chip {
+  border: none; background: var(--s2); border-radius: var(--r-pill);
+  padding: 6px 13px; font-size: 12.5px; color: var(--muted);
+}
+.chip:hover { background: var(--s3); color: var(--text); }
+.chip.mine { background: var(--acc-cont); color: var(--text); }
+.chip.add { border: 1px dashed var(--outline-2); background: none; }
+.kbd { border-radius: 6px; background: var(--s2); border: none; padding: 3px 8px; }
+
+.card {
+  background: var(--s2); border: 1px solid var(--outline); border-radius: var(--r);
+  padding: 18px 20px;
+}
+.card h3 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+.field span { text-transform: none; letter-spacing: 0; font-size: 12.5px; font-weight: 500; }
+.modal, .palette { border-radius: var(--r-lg); background: var(--s1); border: 1px solid var(--outline); }
+.palette .hit.on { background: var(--acc-cont); border-left-color: var(--acc); }
+.ctx-menu { border-radius: var(--r); background: var(--s1); border: 1px solid var(--outline); }
+.ctx-item { border-radius: var(--r-sm); }
+.ctx-item:hover { background: var(--s2); }
+
+/* ── settings ────────────────────────────────────────────────────────────── */
+.set-wrap { display: grid; grid-template-columns: 168px 1fr; min-height: 0; overflow: hidden; }
+.set-rail {
+  background: var(--s0); padding: 16px 10px; display: flex; flex-direction: column;
+  gap: 2px; overflow-y: auto;
+}
+.set-rail .cap { font-size: 11.5px; font-weight: 600; color: var(--muted); padding: 4px 14px 10px; }
+.set-item {
+  display: flex; align-items: center; gap: 10px; padding: 9px 14px;
+  border-radius: var(--r-pill); font-size: 13px; color: var(--muted);
+  border: none; background: none; text-align: left; width: 100%;
+}
+.set-item:hover { background: var(--s2); color: var(--text); }
+.set-item.on { background: var(--acc-cont); color: var(--acc); font-weight: 600; }
+.set-item .led { width: 6px; height: 6px; border-radius: 50%; margin-left: auto; flex: 0 0 auto; }
+.set-body {
+  background: var(--s1); border-radius: var(--r-lg) 0 0 0; padding: 24px 26px 40px;
+  display: flex; flex-direction: column; gap: 20px; min-width: 0; overflow-y: auto;
+}
+.set-body h1 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; margin: 0; }
+.set-cap { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.set-cap .n { font-size: 11.5px; color: var(--muted); margin-left: auto; }
+.set-lbl { font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin: 0; }
+
+/* theme tiles — you cannot pick a theme you cannot see */
+.theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 12px; }
+.theme-tile {
+  border: none; padding: 0; border-radius: var(--r); overflow: hidden;
+  background: var(--s2); display: flex; flex-direction: column; text-align: left;
+  box-shadow: 0 0 0 1px var(--outline);
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.theme-tile:hover { transform: translateY(-3px); box-shadow: 0 0 0 1px var(--outline-2), 0 8px 22px rgba(0,0,0,.34); }
+.theme-tile.on { box-shadow: 0 0 0 2px var(--acc); }
+.theme-tile:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.tt-prev { padding: 11px 12px; font-family: var(--mono); font-size: 8.5px; line-height: 1.65; min-height: 66px; }
+.tt-meta { display: flex; align-items: center; gap: 8px; padding: 9px 12px; }
+.tt-name { font-size: 12px; font-weight: 500; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.theme-tile.on .tt-name { color: var(--acc); font-weight: 600; }
+.tt-strip { margin-left: auto; display: flex; gap: 3px; flex: 0 0 auto; }
+.tt-strip i { width: 8px; height: 8px; border-radius: 50%; display: block; }
+
+/* schedule form */
+.sched { background: var(--s2); border-radius: var(--r); overflow: hidden; }
+.fr {
+  display: grid; grid-template-columns: 150px 1fr; gap: 16px;
+  padding: 14px 18px; align-items: center; border-bottom: 1px solid var(--outline);
+}
+.fr:last-child { border-bottom: none; }
+.fr > .k { font-size: 13px; font-weight: 500; color: var(--muted); }
+.fr > .v { min-width: 0; display: flex; align-items: center; gap: 11px; flex-wrap: wrap; }
+.fr > .v > input, .fr > .v > select { flex: 1; min-width: 140px; }
+.fr .stat { font-size: 11.5px; color: var(--muted); }
+.fr .stat.ok { color: var(--ok); }
+
+/* vault */
+.vault { background: var(--s2); border-radius: var(--r); overflow: hidden; }
+.vrow {
+  display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center;
+  padding: 13px 18px; border-bottom: 1px solid var(--outline);
+}
+.vrow:last-child { border-bottom: none; }
+.vrow .nm { font-size: 13.5px; font-weight: 500; color: var(--text); }
+.vrow .sub { font-size: 11.5px; color: var(--muted); }
+.pill {
+  font-size: 11px; font-weight: 600; padding: 3px 11px; border-radius: var(--r-pill);
+  border: 1px solid transparent;
+}
+.pill.set { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.pill.no  { color: var(--muted); background: var(--s3); }
+
+/* ── error boundary ──────────────────────────────────────────────────────── */
+.pane-error {
+  height: 100%; display: grid; place-items: center; padding: 24px; text-align: center;
+  background: var(--s2); color: var(--muted); gap: 10px;
+}
+.pane-error h3 { color: var(--danger); font-size: 15px; margin: 0 0 6px; }
+.pane-error pre {
+  font-family: var(--mono); font-size: 11px; color: var(--muted); margin: 8px 0 0;
+  max-width: 100%; overflow-x: auto; text-align: left;
+  background: var(--s0); border-radius: var(--r-sm); padding: 10px 12px;
+}
+
+/* ── narrow ──────────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .app { grid-template-columns: 64px 1fr; }
+  .set-wrap { grid-template-columns: 1fr; }
+  .set-rail { flex-direction: row; overflow-x: auto; padding: 10px; }
+  .set-rail .cap { display: none; }
+  .set-body { border-radius: 0; }
+}
+
+/* Native controls default to the browser's blue, which ignores the theme
+   entirely — a Solarized or CRT Amber terminal with a Chrome-blue slider. */
+input[type="range"], input[type="checkbox"], input[type="radio"] { accent-color: var(--acc); }
+input[type="range"] { background: none; padding: 0; border: none; }
+input[type="checkbox"] { flex: 0 0 auto; min-width: 0; width: auto; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Motion. Restrained on purpose — this is a tool people stare at for eight
+   hours, so everything below is transform/opacity only, sub-200ms, and dies
+   under prefers-reduced-motion.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* drag a session onto the tab strip to open it */
+.session-row { cursor: grab; transition: background .16s ease, transform .16s cubic-bezier(.34,1.56,.64,1); }
+.session-row:active { cursor: grabbing; }
+.session-row.dragging { opacity: .4; transform: scale(.97); }
+
+.tabs {
+  border-radius: var(--r) var(--r) 0 0;
+  transition: background .18s ease, box-shadow .18s ease;
+}
+.tabs.drop-on {
+  background: var(--acc-cont);
+  box-shadow: inset 0 0 0 2px var(--acc);
+}
+.tabs.drop-on::after {
+  content: "Drop to open";
+  margin-left: 10px; font-size: 12px; font-weight: 600; color: var(--acc);
+  animation: drop-hint .9s ease-in-out infinite;
+}
+@keyframes drop-hint { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+
+/* a tab that just opened announces itself, briefly */
+.tab { animation: tab-in .22s cubic-bezier(.34,1.56,.64,1); }
+@keyframes tab-in {
+  from { opacity: 0; transform: translateY(-4px) scale(.94); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* press feedback everywhere it makes sense */
+.ritem, .sh-btn, .cbar-go, .primary, .ghost, .chip, .layout-seg button, .cbar-modes button, .set-item {
+  transition: background .16s ease, color .16s ease, transform .12s cubic-bezier(.34,1.56,.64,1);
+}
+.ritem:active, .sh-btn:active, .cbar-go:active, .primary:active,
+.ghost:active, .chip:active { transform: scale(.96); }
+
+/* the live-session LED breathes; an idle one does not */
+.sh-led:not(.off) { animation: led-breathe 3.4s ease-in-out infinite; }
+@keyframes led-breathe {
+  0%,100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 14%, transparent); }
+  50%     { box-shadow: 0 0 0 5px color-mix(in srgb, var(--ok) 22%, transparent); }
+}
+
+/* typing an ask lifts the bar out of the chrome */
+.cbar input:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--acc) 16%, transparent); }
+
+/* pane focus — which terminal receives your keystrokes should never be a guess */
+.pane { transition: box-shadow .18s ease; }
+.panes.split .pane, .panes.quad .pane { box-shadow: inset 0 0 0 1px var(--outline); }
+.panes.split .pane:has(.term-host):focus-within,
+.panes.quad  .pane:has(.term-host):focus-within { box-shadow: inset 0 0 0 2px var(--acc); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tab, .tabs.drop-on::after, .sh-led:not(.off) { animation: none; }
+  .session-row, .ritem, .sh-btn, .cbar-go, .primary, .ghost, .chip { transition: none; }
+}
+
+/* ── Key entry feedback ───────────────────────────────────────────────────
+   Pasting a key is the one moment NTerm does something non-obvious: it reads
+   the prefix, names the provider, and asks that provider what models the key
+   can actually use. Worth showing, quietly. */
+
+.keyrow { position: relative; }
+.keyrow.scanning input {
+  border-color: color-mix(in srgb, var(--acc) 55%, transparent);
+  background:
+    linear-gradient(90deg,
+      transparent 0%,
+      color-mix(in srgb, var(--acc) 13%, transparent) 45%,
+      transparent 90%) no-repeat,
+    var(--s3);
+  background-size: 42% 100%;
+  animation: key-scan 1.25s ease-in-out infinite;
+}
+@keyframes key-scan {
+  from { background-position: -45% 0, 0 0; }
+  to   { background-position: 125% 0, 0 0; }
+}
+.scan-note { color: var(--acc) !important; }
+
+/* a result that just arrived should register without shouting */
+.pop { animation: stat-pop .34s cubic-bezier(.34,1.56,.64,1); }
+@keyframes stat-pop {
+  from { opacity: 0; transform: translateY(3px) scale(.96); }
+  to   { opacity: 1; transform: none; }
+}
+
+.dots { display: inline-flex; gap: 3px; vertical-align: -1px; margin-right: 3px; }
+.dots i {
+  width: 4px; height: 4px; border-radius: 50%; background: var(--acc); display: block;
+  animation: dot-cycle 1.1s ease-in-out infinite;
+}
+.dots i:nth-child(2) { animation-delay: .16s; }
+.dots i:nth-child(3) { animation-delay: .32s; }
+@keyframes dot-cycle { 0%,100% { opacity: .25; } 50% { opacity: 1; } }
+
+/* saving anything writes to the vault — a beat of acknowledgement */
+.set-body .primary:active { transform: scale(.96); }
+
+@media (prefers-reduced-motion: reduce) {
+  .keyrow.scanning input, .pop, .dots i { animation: none; }
+  .keyrow.scanning input { background: var(--s3); }
+}
+
+/* ── editor: AI acts on the buffer, not just the chat panel ──────────────── */
+.ed-meta { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.editor-ai {
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  padding: 8px 10px; border-bottom: 1px solid var(--outline); background: var(--s1);
+}
+.editor-ai select { padding: 6px 11px; font-size: 12px; border-radius: var(--r-pill); background: var(--s2); }
+.editor-note {
+  padding: 7px 12px; font-size: 12px; color: var(--acc);
+  background: color-mix(in srgb, var(--acc) 10%, transparent);
+  border-bottom: 1px solid var(--outline);
+}
+.editor-readout {
+  border-top: 1px solid var(--outline); background: var(--s1);
+  padding: 10px 12px; max-height: 44%; overflow: auto; flex: 0 0 auto;
+}
+.editor-readout pre {
+  margin: 8px 0 0; font-family: var(--mono); font-size: 12px; line-height: 1.6;
+  white-space: pre-wrap; color: var(--text);
+}
+
+/* ── policy gate verdict ─────────────────────────────────────────────────
+   A block has to be legible and specific. "Denied" with no reason trains
+   people to click through, which is how a gate stops working. */
+.gate {
+  margin-top: 10px; padding: 11px 13px; border-radius: var(--r-sm);
+  font-size: 12.5px; line-height: 1.5;
+}
+.gate strong { display: block; margin-bottom: 6px; }
+.gate ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.gate li { font-family: var(--mono); font-size: 11.5px; }
+.gate-note { display: block; margin-top: 8px; color: var(--muted); font-size: 12px; }
+.gate-block {
+  background: color-mix(in srgb, var(--danger) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 42%, transparent);
+}
+.gate-block strong { color: var(--danger); }
+.gate-warn {
+  background: color-mix(in srgb, var(--pending) 11%, transparent);
+  border: 1px solid color-mix(in srgb, var(--pending) 38%, transparent);
+}
+.gate-warn strong { color: var(--pending); }

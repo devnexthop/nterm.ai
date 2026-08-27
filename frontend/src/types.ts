@@ -80,6 +80,9 @@ export interface Settings {
   ai_cache_enabled: boolean;
   theme: string;
   font_size: number;
+  font_family: string;
+  log_sessions: boolean;
+  log_redact: boolean;
   ai_auto_context: boolean;
   bench_api_url: string;
   bench_mode: string;
@@ -141,6 +144,12 @@ export interface AiPreview {
   dialect: string;
   cache_hit?: boolean;
   offline?: boolean;
+  policy?: {
+    verdict: "allow" | "warn" | "block";
+    blocked: string[];
+    warnings: string[];
+    dialect: string;
+  };
   usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
 }
 

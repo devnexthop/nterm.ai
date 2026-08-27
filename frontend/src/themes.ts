@@ -30,6 +30,36 @@ export type ChromeTheme = {
 
 export const THEMES: ChromeTheme[] = [
   {
+    /* ValeronLabs house palette — --pit-black / --navy / --cyan from
+       valeronlabs.com. Terminal red is lifted off the brand's #e10600 racing
+       red, which is too dark to read as body text on a near-black ground. */
+    id: "valeron",
+    label: "Valeron (brand)",
+    bg: "#05080d",
+    panel: "#0b1520",
+    panel2: "#101a26",
+    border: "#1c2a3a",
+    text: "#eef3f8",
+    muted: "#9aa8b5",
+    accent: "#3ec6ff",
+    accent2: "#7ad7ff",
+    onAccent: "#04121c",
+    term: {
+      background: "#070c14",
+      foreground: "#dde8f2",
+      cursor: "#3ec6ff",
+      selectionBackground: "#1d3f57",
+      black: "#05080d",
+      red: "#ff6b6b",
+      green: "#4ade80",
+      yellow: "#ffd166",
+      blue: "#3ec6ff",
+      magenta: "#c084fc",
+      cyan: "#7ad7ff",
+      white: "#eef3f8",
+    },
+  },
+  {
     id: "nexthop_dark",
     label: "NextHop Dark (team)",
     bg: "#000000",

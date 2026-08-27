@@ -9,6 +9,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -24,6 +25,7 @@ from .crypto import decrypt, encrypt
 from .db import Base, SessionLocal, engine, get_db, migrate_schema
 from .device_profiles import PROFILES
 from .extensions import USER_PACK, enabled_snippets, ensure_user_pack, sync_builtin
+from . import importers
 from .llm import act as ai_act
 from .llm.providers import guess_provider, list_models, suggest_base_url
 from .mcp_server import router as mcp_router
@@ -375,11 +377,14 @@ def get_settings(db: Session = Depends(get_db)):
         "ai_provider": get_value(db, "ai_provider", "openai"),
         "ai_base_url": get_value(db, "ai_base_url", ""),
         "ai_cache_enabled": get_value(db, "ai_cache_enabled", "true") == "true",
-        "theme": get_value(db, "theme", "nexthop_dark"),
+        "theme": get_value(db, "theme", "valeron"),
         "relay_configured": bool(get_value(db, "relay_token", "") or os.environ.get("NTERM_RELAY_TOKEN")),
         "version": APP_VERSION,
         "build": BUILD_SHA,
         "font_size": int(get_value(db, "font_size", "14")),
+        "font_family": get_value(db, "font_family", "IBM Plex Mono"),
+        "log_sessions": get_value(db, "log_sessions", "true") == "true",
+        "log_redact": get_value(db, "log_redact", "true") == "true",
         "ai_auto_context": get_value(db, "ai_auto_context", "true") == "true",
         "bench_api_url": bench_feed.bench_url(db),
         "bench_mode": bench_feed.bench_mode(db),
@@ -405,6 +410,12 @@ def put_settings(body: SettingsIn, db: Session = Depends(get_db)):
         set_value(db, "theme", body.theme)
     if body.font_size:
         set_value(db, "font_size", str(body.font_size))
+    if body.font_family:
+        set_value(db, "font_family", body.font_family)
+    if body.log_sessions is not None:
+        set_value(db, "log_sessions", "true" if body.log_sessions else "false")
+    if body.log_redact is not None:
+        set_value(db, "log_redact", "true" if body.log_redact else "false")
     if body.ai_auto_context is not None:
         set_value(db, "ai_auto_context", "true" if body.ai_auto_context else "false")
     if body.relay_token is not None:
@@ -843,6 +854,7 @@ def ai_act_ep(body: AiActIn, db: Session = Depends(get_db)):
             db,
             message=body.message,
             device_type=dtype,
+            kind=(session.kind if session else None),
             customer_id=cid,
             session_id=body.session_id,
             source="do_bar",
@@ -993,6 +1005,125 @@ def forget_hostkey(host_port: str):
         raise HTTPException(404, "No pinned key for that host")
     audit("ssh.hostkey_forgotten", host_port=host_port)
     return {"ok": True}
+
+
+class ImportPreviewIn(BaseModel):
+    content: str = ""
+    format: str = "auto"
+    filename: str = ""
+
+
+class ImportedSessionIn(BaseModel):
+    name: str = ""
+    host: str = ""
+    port: int = 22
+    kind: str = "ssh"
+    username: str = ""
+    device_type: str = "generic"
+    group: str = ""
+    baud: int = 9600
+
+
+class ImportCommitIn(BaseModel):
+    sessions: list[ImportedSessionIn] = Field(default_factory=list)
+    customer_name: str = ""
+
+
+@app.post("/api/import/preview")
+def import_preview(body: ImportPreviewIn):
+    """Parse a SecureCRT / PuTTY / ssh_config / CSV export without saving it.
+
+    The preview step is not a nicety. An import writes hundreds of rows into a
+    credential vault, and the operator has to see what the parser made of their
+    file before any of it lands.
+    """
+    if len(body.content.encode("utf-8", "ignore")) > importers.MAX_CONTENT_BYTES:
+        raise HTTPException(413, "That file is too large to import")
+    fmt = importers.normalize_format(body.format) or "auto"
+    if fmt == "auto":
+        fmt = importers.detect(body.filename, body.content)
+    try:
+        rows = importers.parse(body.content, fmt, body.filename)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    if len(rows) > importers.MAX_SESSIONS:
+        raise HTTPException(400, f"Import is limited to {importers.MAX_SESSIONS} sessions at a time")
+    return {"format": fmt, "count": len(rows), "sessions": rows}
+
+
+@app.post("/api/import/commit")
+def import_commit(body: ImportCommitIn, db: Session = Depends(get_db)):
+    """Save a previewed import as customers and sessions.
+
+    No credential fields are read from the request at all: an import moves
+    structure, and a password still has to be typed into NTerm to reach the
+    vault.
+    """
+    if not body.sessions:
+        raise HTTPException(400, "Nothing to import")
+    if len(body.sessions) > importers.MAX_SESSIONS:
+        raise HTTPException(400, f"Import is limited to {importers.MAX_SESSIONS} sessions at a time")
+    chosen = body.customer_name.strip()
+    known = {c.name.strip().lower(): c for c in db.query(Customer).all()}
+    # Read the existing (customer, name, host) keys once rather than querying
+    # per row: a real import is hundreds of rows, and the set also catches
+    # duplicates inside the batch itself, which a query could not see before
+    # the commit.
+    seen = {
+        (s.customer_id, s.name.strip().lower(), s.host.strip().lower())
+        for s in db.query(SavedSession).all()
+    }
+    created: list[SavedSession] = []
+    skipped = 0
+    for item in body.sessions:
+        host = item.host.strip()[:255]
+        if not host:
+            skipped += 1
+            continue
+        # An explicitly chosen customer wins. Otherwise the *top* folder the
+        # session came from becomes its customer, so one SecureCRT tree arrives
+        # filed the way the operator already had it instead of as a flat pile.
+        # Only the top level: "Acme/Plant Floor/IDF3" is one customer with a
+        # deep folder, not three customers.
+        cname = (chosen or item.group.strip().split("/")[0].strip() or "Imported")[:200]
+        customer = known.get(cname.lower())
+        if customer is None:
+            customer = Customer(name=cname, notes="Created by session import.")
+            db.add(customer)
+            db.flush()
+            known[cname.lower()] = customer
+        name = (item.name.strip() or host)[:200]
+        group = item.group.strip()
+        # Re-running an import after fixing one row is normal; it must not
+        # double the vault.
+        key = (customer.id, name.lower(), host.lower())
+        if key in seen:
+            skipped += 1
+            continue
+        seen.add(key)
+        row = SavedSession(
+            customer_id=customer.id,
+            name=name,
+            kind=item.kind if item.kind in ("ssh", "telnet", "serial") else "ssh",
+            device_type=item.device_type if item.device_type in PROFILES else "generic",
+            host=host,
+            port=item.port if 1 <= item.port <= 65535 else 22,
+            username=item.username.strip()[:200],
+            notes=f"Imported from {group}" if group and group != cname else "Imported",
+            baud=item.baud if 50 <= item.baud <= 4_000_000 else 9600,
+        )
+        db.add(row)
+        created.append(row)
+    db.commit()
+    for row in created:
+        db.refresh(row)
+    audit("import.committed", created=len(created), skipped=skipped)
+    return {
+        "created": len(created),
+        "skipped": skipped,
+        "customer_ids": sorted({r.customer_id for r in created}),
+        "sessions": [session_out(r) for r in created],
+    }
 
 
 if STATIC_DIR.exists():

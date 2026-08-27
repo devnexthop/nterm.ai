@@ -13,6 +13,19 @@ from .settings_store import get_json, get_value, set_json, set_value
 
 CACHE_KEY = "bench_feed_cache"
 META_KEY = "bench_feed_meta"
+VALIDATOR_KEY = "bench_feed_validator"   # ETag / Last-Modified from the last 200
+
+
+def _user_agent() -> str:
+    """Real version in the UA. With a large installed base the server logs are the
+    only way to see which versions are actually out there."""
+    try:
+        from pathlib import Path
+
+        v = (Path(__file__).resolve().parents[2] / "VERSION").read_text().strip()
+    except Exception:
+        v = "0"
+    return f"NTerm/{v} (+https://nterm.ai)"
 
 
 def _now() -> str:
@@ -113,7 +126,14 @@ async def pull(db: Session) -> dict:
     url = bench_url(db)
     if not url:
         raise ValueError("Set a Bench API URL in Settings")
-    headers = {"Accept": "application/json", "User-Agent": "NTerm/0.1"}
+    headers = {"Accept": "application/json", "User-Agent": _user_agent()}
+    # Conditional request: if the feed has not changed the server answers 304 with
+    # no body. Cheap for us, and much cheaper for whoever is hosting the feed.
+    validator = get_json(db, VALIDATOR_KEY) or {}
+    if validator.get("etag"):
+        headers["If-None-Match"] = validator["etag"]
+    if validator.get("last_modified"):
+        headers["If-Modified-Since"] = validator["last_modified"]
     key = bench_key(db)
     if key:
         headers["Authorization"] = f"Bearer {key}"
@@ -126,11 +146,45 @@ async def pull(db: Session) -> dict:
         for candidate in urls:
             try:
                 r = await client.get(candidate, headers=headers)
+                if r.status_code == 304:
+                    # Unchanged. Keep the cache, just restamp the metadata.
+                    set_json(
+                        db,
+                        META_KEY,
+                        {
+                            "url": candidate,
+                            "mode": bench_mode(db),
+                            "source": (cached(db) or {}).get("source") or "nterm-builtin",
+                            "fetched_at": _now(),
+                            "ok": True,
+                            "error": "",
+                            "not_modified": True,
+                        },
+                    )
+                    return {"ok": True, "feed": resolve(db), "meta": meta(db)}
+                if r.status_code in (429, 503):
+                    # Being asked to back off is not the same as being broken, and
+                    # trying the next candidate URL would only add load.
+                    retry = r.headers.get("Retry-After", "")
+                    last_err = (
+                        f"feed is rate limiting (HTTP {r.status_code})"
+                        + (f", retry after {retry}s" if retry else "")
+                        + " — using cache"
+                    )
+                    break
                 if r.status_code >= 400:
                     last_err = f"{candidate} → HTTP {r.status_code}"
                     continue
                 feed = _normalize(r.json(), candidate)
                 set_json(db, CACHE_KEY, feed)
+                set_json(
+                    db,
+                    VALIDATOR_KEY,
+                    {
+                        "etag": r.headers.get("ETag", ""),
+                        "last_modified": r.headers.get("Last-Modified", ""),
+                    },
+                )
                 set_json(
                     db,
                     META_KEY,

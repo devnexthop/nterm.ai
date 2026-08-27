@@ -24,6 +24,7 @@ export default function TerminalPane({
   tab,
   theme,
   fontSize,
+  fontFamily,
   active,
   onEditText,
   onAskAi,
@@ -31,6 +32,7 @@ export default function TerminalPane({
   tab: OpenTab;
   theme: ChromeTheme;
   fontSize: number;
+  fontFamily?: string;
   active: boolean;
   onEditText?: (text: string, title: string) => void;
   onAskAi?: (text: string) => void;
@@ -43,7 +45,7 @@ export default function TerminalPane({
     if (!host.current) return;
     const term = new Terminal({
       cursorBlink: true,
-      fontFamily: '"IBM Plex Mono", ui-monospace, monospace',
+      fontFamily: `${JSON.stringify(fontFamily || "IBM Plex Mono")}, ui-monospace, monospace`,
       fontSize,
       theme: theme.term,
       scrollback: 8000,
@@ -95,8 +97,12 @@ export default function TerminalPane({
 
   useEffect(() => {
     termRef.current?.options && (termRef.current.options.theme = theme.term);
-    if (termRef.current) termRef.current.options.fontSize = fontSize;
-  }, [theme, fontSize]);
+    if (termRef.current) {
+      termRef.current.options.fontSize = fontSize;
+      termRef.current.options.fontFamily =
+        `${JSON.stringify(fontFamily || "IBM Plex Mono")}, ui-monospace, monospace`;
+    }
+  }, [theme, fontSize, fontFamily]);
 
   useEffect(() => {
     if (active) termRef.current?.focus();

@@ -99,6 +99,9 @@ class SettingsIn(BaseModel):
     ai_cache_enabled: bool | None = None
     theme: str | None = None
     font_size: int | None = None
+    font_family: str | None = None
+    log_sessions: bool | None = None
+    log_redact: bool | None = None
     ai_auto_context: bool | None = None
     bench_api_url: str | None = None
     bench_mode: str | None = None

@@ -68,6 +68,19 @@ export default function Sidebar({
                   <div
                     className="session-row"
                     key={s.id}
+                    draggable
+                    onDragStart={(e) => {
+                      /* Drop target is the tab strip in App. The custom MIME keeps
+                         this apart from tab-reordering drags, which carry none. */
+                      e.dataTransfer.setData(
+                        "application/x-nterm-session",
+                        JSON.stringify({ customerId: c.id, sessionId: s.id }),
+                      );
+                      e.dataTransfer.effectAllowed = "copy";
+                      e.currentTarget.classList.add("dragging");
+                    }}
+                    onDragEnd={(e) => e.currentTarget.classList.remove("dragging")}
+                    title="Drag onto the tab strip to open"
                     onClick={() => onOpen(c, s)}
                     onContextMenu={(e) => {
                       e.preventDefault();

@@ -15,18 +15,52 @@ Two rules hold here, both deliberate:
 """
 from __future__ import annotations
 
+import platform
 import re
 
-BASH = "bash"
+BASH = "bash"          # GNU coreutils — Linux
+MACOS = "macos"        # BSD userland — different flags for sed, stat, date...
 POWERSHELL = "powershell"
+
+_LOCAL = ("local", "shell", "localhost")
 
 
 def dialect_for(device_type: str | None, kind: str | None = None) -> str:
-    """Map a session to a shell dialect."""
+    """Map a session to a shell dialect.
+
+    For a *local* session we detect the host rather than trust the label: the
+    seeded Lab session is tagged "linux" regardless of what it is actually
+    running on, and a macOS user handed GNU flags gets errors. BSD and GNU
+    userland differ enough (sed -i, stat, date, base64) that guessing is worse
+    than asking the interpreter we are already running inside.
+    """
     dt = (device_type or "").lower()
+    k = (kind or "").lower()
+
+    # A local session runs on THIS host, so detection beats the stored label —
+    # the seeded Lab session is tagged "linux" whatever machine it is on.
+    if k in _LOCAL or dt in _LOCAL:
+        sysname = platform.system().lower()
+        if sysname == "windows":
+            return POWERSHELL
+        if sysname == "darwin":
+            return MACOS
+        return BASH
+
     if dt in ("windows", "powershell", "win"):
         return POWERSHELL
+    if dt in ("macos", "darwin", "osx"):
+        return MACOS
     return BASH
+
+
+def label(dialect: str) -> str:
+    """Human name for the drafting prompt and the preview chip."""
+    return {
+        POWERSHELL: "Windows PowerShell",
+        MACOS: "macOS (BSD userland — zsh/bash)",
+        BASH: "Linux (GNU coreutils — bash)",
+    }.get(dialect, "Linux (GNU coreutils — bash)")
 
 
 # Shapes that can ruin someone's evening. Matched against the whole command, so
@@ -82,8 +116,10 @@ def render(args: dict, dialect: str) -> tuple[list[str], str, str]:
     explanation = (args.get("explanation") or "").strip()
     risk, reasons = classify(command)
 
-    shell = POWERSHELL if dialect in (POWERSHELL, "windows") else BASH
-    summary = explanation or ("PowerShell" if shell == POWERSHELL else "Shell") + " command"
+    shell = POWERSHELL if dialect in (POWERSHELL, "windows") else dialect
+    summary = explanation or (
+        "PowerShell" if shell == POWERSHELL else "macOS shell" if shell == MACOS else "Shell"
+    ) + " command"
     if reasons:
         summary += "  ⚠ " + "; ".join(reasons)
 

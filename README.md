@@ -1,5 +1,7 @@
 # NTerm
 
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 **nterm.ai** — a network-engineer terminal for Cisco, Palo Alto, and Fortinet.
 
 SecureCRT session vault. PuTTY-grade SSH. Warp-style AI. Built-in syslog, TFTP, and DHCP. Engineer bench feed from [nterm.ai](https://nterm.ai/bench-feed.json).
@@ -71,3 +73,20 @@ Installers (Windows EXE / Mac DMG) come later. Local test is Docker.
 | `Ctrl/Cmd+N` | New session |
 | `Ctrl/Cmd+B` | Broadcast bar |
 | `Ctrl/Cmd+Shift+A` | Toggle AI |
+
+## Deploying
+
+See **[DEPLOY.md](DEPLOY.md)**. Short version: `docker compose up -d --build`, then
+http://localhost:8787. The compose file binds to **loopback only**. NTerm does hold a
+per-install API token, but it guards against hostile websites, not against network reach —
+so do not expose the port directly.
+
+## Contributing
+
+See **[CONTRIBUTING.md](CONTRIBUTING.md)**. Security issues go to
+**[SECURITY.md](SECURITY.md)**, never a public issue.
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Copyright 2026 ValeronLabs LLC.

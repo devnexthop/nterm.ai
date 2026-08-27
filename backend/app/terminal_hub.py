@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import os
-import pty
+import shutil
 import struct
-import termios
-import fcntl
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -22,6 +21,39 @@ from .auth import audit
 from .models import SavedSession, SessionLog
 from .simulators import DeviceSimulator
 
+IS_WINDOWS = sys.platform == "win32"
+
+# pty/termios/fcntl do not exist on Windows, and importing them at module level
+# meant the whole backend failed to start there — not just the local shell.
+# Windows gets ConPTY through pywinpty instead.
+if IS_WINDOWS:
+    pty = termios = fcntl = None  # type: ignore[assignment]
+    try:
+        import winpty  # type: ignore
+    except ImportError:
+        winpty = None  # type: ignore
+else:
+    import fcntl
+    import pty
+    import termios
+
+    winpty = None  # type: ignore
+
+
+def default_shell() -> list[str]:
+    """The login shell for a local session on this host."""
+    if IS_WINDOWS:
+        pwsh = os.environ.get("NTERM_SHELL")
+        if pwsh:
+            return [pwsh]
+        # PowerShell 7 if present, else Windows PowerShell, else cmd.
+        for candidate in ("pwsh.exe", "powershell.exe", "cmd.exe"):
+            found = shutil.which(candidate)
+            if found:
+                return [found]
+        return ["cmd.exe"]
+    return [os.environ.get("SHELL", "/bin/bash"), "-l"]
+
 
 class LiveTab:
     def __init__(self, tab_id: str, session: SavedSession):
@@ -36,6 +68,7 @@ class LiveTab:
         self.conn = None
         self.process = None
         self.master_fd = None
+        self.winpty = None
         self.simulator: DeviceSimulator | None = None
         self.reader_task: asyncio.Task | None = None
 
@@ -84,7 +117,57 @@ class TerminalHub:
         finally:
             await self.close(tab_id, db)
 
+    async def _run_local_windows(self, tab: LiveTab, session: SavedSession):
+        """Local shell on Windows, via ConPTY.
+
+        ConPTY is what makes a real interactive shell possible on Windows —
+        pipes alone cannot carry the terminal semantics PowerShell emits, so
+        without it the pane would show escape codes and mangle line editing.
+        pywinpty is an optional, platform-gated dependency; if it is missing we
+        say so plainly rather than opening a broken pane.
+        """
+        if winpty is None:
+            raise RuntimeError(
+                "Local shell on Windows needs the pywinpty package. "
+                "Install it with: pip install pywinpty"
+            )
+
+        argv = default_shell()
+        cols, rows = 120, 30
+        loop = asyncio.get_running_loop()
+
+        # pywinpty spawn is blocking; keep it off the event loop.
+        def _spawn():
+            p = winpty.PtyProcess.spawn(argv, dimensions=(rows, cols))
+            return p
+
+        proc = await loop.run_in_executor(None, _spawn)
+        tab.process = proc
+        tab.winpty = proc
+        await tab.send_json({"type": "status", "state": "connected"})
+
+        async def _pump():
+            while not tab.closed and proc.isalive():
+                try:
+                    data = await loop.run_in_executor(None, proc.read, 4096)
+                except (EOFError, OSError):
+                    break
+                if not data:
+                    await asyncio.sleep(0.02)
+                    continue
+                await self._emit(tab, data)
+            await tab.send_json({"type": "status", "state": "closed"})
+
+        tab.reader_task = asyncio.create_task(_pump())
+
     def _open_log(self, tab: LiveTab, session: SavedSession, db: Session):
+        # Logging is on by default because incident work needs it, but a session
+        # log is a transcript of everything the device printed — including
+        # anything secret you typed — so it has to be switchable.
+        from .settings_store import get_value
+
+        if get_value(db, "log_sessions", "true") != "true":
+            return
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         folder = DATA_DIR / "logs" / f"session-{session.id}"
         folder.mkdir(parents=True, exist_ok=True)
@@ -120,13 +203,16 @@ class TerminalHub:
             await self._handle_client(tab, msg)
 
     async def _run_local(self, tab: LiveTab, session: SavedSession):
+        if IS_WINDOWS:
+            await self._run_local_windows(tab, session)
+            return
         master, slave = pty.openpty()
         tab.master_fd = master
         env = os.environ.copy()
         env["TERM"] = "xterm-256color"
+        argv = default_shell()
         proc = await asyncio.create_subprocess_exec(
-            os.environ.get("SHELL", "/bin/bash"),
-            "-l",
+            *argv,
             stdin=slave,
             stdout=slave,
             stderr=slave,
@@ -343,6 +429,12 @@ class TerminalHub:
             out = tab.simulator.feed(data)
             await self._emit(tab, out)
             return
+        if tab.kind == "local" and tab.winpty is not None:
+            try:
+                tab.winpty.write(data)
+            except Exception:
+                pass
+            return
         if tab.kind == "local" and tab.master_fd is not None:
             os.write(tab.master_fd, data.encode())
             return
@@ -362,7 +454,12 @@ class TerminalHub:
         tab = self.tabs.get(tab_id)
         if not tab:
             return
-        if tab.kind == "local" and tab.master_fd is not None:
+        if tab.kind == "local" and tab.winpty is not None:
+            try:
+                tab.winpty.setwinsize(rows, cols)
+            except Exception:
+                pass
+        elif tab.kind == "local" and tab.master_fd is not None:
             winsz = struct.pack("HHHH", rows, cols, 0, 0)
             try:
                 fcntl.ioctl(tab.master_fd, termios.TIOCSWINSZ, winsz)

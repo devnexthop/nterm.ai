@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import { api } from "./api";
 import type { Customer, OpenTab, SavedSession, Settings, Snippet, TokenUsage } from "./types";
 import { applyTheme, THEMES } from "./themes";
@@ -10,11 +10,12 @@ import Bench from "./components/Bench";
 import SettingsPage from "./components/Settings";
 import { CustomerForm, Palette, SessionForm, SnippetForm } from "./components/Dialogs";
 import SubnetOverlay from "./components/SubnetOverlay";
-import SnippetBar from "./components/SnippetBar";
 import EditorDrawer from "./components/EditorDrawer";
-import DoBar from "./components/DoBar";
+import Monitor from "./components/Monitor";
+import CommandBar, { type Mode } from "./components/CommandBar";
+import ErrorBoundary from "./components/ErrorBoundary";
 
-type Page = "sessions" | "toolkit" | "bench" | "settings";
+type Page = "sessions" | "toolkit" | "bench" | "monitor" | "settings";
 type Layout = "single" | "split" | "quad";
 
 function uid() {
@@ -41,6 +42,18 @@ function usePref(key: string, fallback: boolean): [boolean, (v: boolean | ((p: b
   return [val, set];
 }
 
+/** Same idea as usePref, for the command bar's mode. */
+function usePrefStr<T extends string>(key: string, fallback: T): [T, (v: T) => void] {
+  const [val, setVal] = useState<T>(() => {
+    try { return (localStorage.getItem(key) as T) || fallback; } catch { return fallback; }
+  });
+  const set = (v: T) => {
+    setVal(v);
+    try { localStorage.setItem(key, v); } catch {}
+  };
+  return [val, set];
+}
+
 export default function App() {
   const [page, setPage] = useState<Page>("sessions");
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -54,9 +67,7 @@ export default function App() {
   const [sideOpen, setSideOpen] = useState(true);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
-  const [bcastOpen, setBcastOpen] = usePref("nterm.bar.broadcast", false);
-  const [snipOpen, setSnipOpen] = usePref("nterm.bar.snippets", false);
-  const [doOpen, setDoOpen] = usePref("nterm.bar.do", true);
+  const [barMode, setBarMode] = usePrefStr<Mode>("nterm.bar.mode", "do");
 
   async function toggleShare() {
     if (!activeTab) return;
@@ -76,7 +87,7 @@ export default function App() {
     }
   }
   const [dragTab, setDragTab] = useState<string | null>(null);
-  const [broadcast, setBroadcast] = useState("");
+  const [dropOn, setDropOn] = useState(false);
   const [scope, setScope] = useState<"selected" | "customer" | "all">("selected");
   const [palette, setPalette] = useState(false);
   const [newCust, setNewCust] = useState(false);
@@ -87,7 +98,7 @@ export default function App() {
   const [editor, setEditor] = useState<{ title: string; text: string } | null>(null);
   const [aiAsk, setAiAsk] = useState<{ text: string; nonce: number } | null>(null);
   const [subnetOpen, setSubnetOpen] = useState(false);
-  const chrome = applyTheme(settings?.theme || "nexthop_dark");
+  const chrome = applyTheme(settings?.theme || "valeron");
 
   async function refresh() {
     setCustomers(await api("/api/customers"));
@@ -143,12 +154,6 @@ export default function App() {
     return tabs.slice(-4);
   }, [tabs, active, layout]);
 
-  async function sendBroadcast() {
-    const targets = targetTabs();
-    for (const t of targets) sendToTab(t.tabId, broadcast.endsWith("\n") ? broadcast : broadcast + "\n");
-    setBroadcast("");
-  }
-
   function targetTabs() {
     if (scope === "all") return tabs;
     if (scope === "customer") {
@@ -202,215 +207,273 @@ export default function App() {
     { label: "Quad tiles", run: () => setLayout("quad") },
     { label: "Toggle AI", run: () => setAiOpen((v) => !v) },
     { label: "Toggle sessions sidebar", run: () => setSideOpen((v) => !v) },
-    { label: "Toggle broadcast bar", run: () => setBcastOpen((v) => !v) },
-    { label: "Toggle AI Do bar", run: () => setDoOpen((v) => !v) },
-    { label: "Toggle quick buttons", run: () => setSnipOpen((v) => !v) },
+    { label: "Command bar: Do", run: () => { setPage("sessions"); setBarMode("do"); } },
+    { label: "Command bar: Cast (broadcast)", run: () => { setPage("sessions"); setBarMode("cast"); } },
+    { label: "Command bar: Macros", run: () => { setPage("sessions"); setBarMode("chips"); } },
+    { label: "Go to AI monitor", run: () => setPage("monitor") },
+    { label: "Share this session", run: () => toggleShare() },
+  ];
+
+  const RAIL: { id: Page; label: string; icon: ReactNode }[] = [
+    { id: "sessions", label: "Sessions", icon: (
+      <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m6 9 3 3-3 3M13 15h5" /></svg>) },
+    { id: "toolkit", label: "Toolkit", icon: (
+      <svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0 5 5l-9.6 9.6a2 2 0 0 1-3-3Z" /><path d="M18 2 22 6" /></svg>) },
+    { id: "bench", label: "Bench", icon: (
+      <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" /></svg>) },
+    { id: "monitor", label: "Monitor", icon: (
+      <svg viewBox="0 0 24 24"><path d="M3 12h4l3 8 4-16 3 8h4" /></svg>) },
   ];
 
   return (
     <div className="app">
-      <header className="topbar">
-        <div className="brand"><img src="/icon.png" alt="" />NTerm</div>
-        <nav>
-          <button className={page === "sessions" ? "active" : ""} onClick={() => setPage("sessions")}>Sessions</button>
-          <button className={page === "toolkit" ? "active" : ""} onClick={() => setPage("toolkit")}>Toolkit</button>
-          <button className={page === "bench" ? "active" : ""} onClick={() => setPage("bench")}>Bench</button>
-          <button className={page === "settings" ? "active" : ""} onClick={() => setPage("settings")}>Settings</button>
-        </nav>
-        <div className="spacer" />
-        {page === "sessions" && (
-          <>
-            <button className="ghost" onClick={() => setLayout("single")}>Merge</button>
-            <button className="ghost" onClick={() => setLayout("split")}>Split</button>
-            <button className="ghost" onClick={() => setLayout("quad")}>Quad</button>
-            <button className="ghost" onClick={() => setSubnetOpen(true)}>Subnet</button>
-            <button className="ghost" onClick={() => setDoOpen((v) => !v)}
-              title={(doOpen ? "Hide" : "Show") + " the AI Do bar"}>
-              {doOpen ? "AI bar \u25be" : "AI bar \u25b8"}
-            </button>
-            <button className="ghost" onClick={() => setSnipOpen((v) => !v)}
-              title={(snipOpen ? "Hide" : "Show") + " quick command buttons"}>
-              {snipOpen ? "Quick \u25be" : "Quick \u25b8"}
-            </button>
-            <button className={`share-btn ${shareUrl ? "on" : ""}`} onClick={toggleShare} disabled={!activeTab || shareBusy}
-              title={shareUrl ? "Stop sharing this session" : "Share this session read-only"}>
-              {shareBusy ? "…" : shareUrl ? "Sharing \u25cf" : "Share"}
-            </button>
-            <button className="ghost" onClick={() => setSideOpen((v) => !v)}
-              title={(sideOpen ? "Hide" : "Show") + " sessions  (\u2318\u21e7S)"}>
-              {sideOpen ? "\u2039 Sessions" : "Sessions \u203a"}
-            </button>
-            <button className="ghost" onClick={() => setAiOpen((v) => !v)}
-              title={(aiOpen ? "Hide" : "Show") + " AI panel  (\u2318\u21e7A)"}>
-              {aiOpen ? "Hide AI \u203a" : "\u2039 Show AI"}
-            </button>
-          </>
-        )}
-        <span className="kbd">⌘K</span>
-        <button className="ghost" onClick={() => setPalette(true)}>Palette</button>
-      </header>
+      {/* Navigation is not a session action, so it leaves the top row entirely.
+          This also finally gives Monitor a home — it existed as a component
+          with no route at all. */}
+      <nav className="railnav" aria-label="Main">
+        <img className="rail-mk" src="/icon.png" alt="NTerm" />
+        {RAIL.map((r) => (
+          <button
+            key={r.id}
+            className={`ritem ${page === r.id ? "on" : ""}`}
+            onClick={() => setPage(r.id)}
+            aria-current={page === r.id ? "page" : undefined}
+            title={r.label}
+          >
+            <span className="rp">{r.icon}</span>
+            <span>{r.label}</span>
+          </button>
+        ))}
+        <span className="rail-grow" />
+        <button
+          className={`ritem ${page === "settings" ? "on" : ""}`}
+          onClick={() => setPage("settings")}
+          aria-current={page === "settings" ? "page" : undefined}
+          title="Settings"
+        >
+          <span className="rp">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M20 12a8 8 0 0 1-.2 1.8l2 1.5-2 3.4-2.3-1a8 8 0 0 1-3 1.8L14 22h-4l-.5-2.5a8 8 0 0 1-3-1.8l-2.3 1-2-3.4 2-1.5a8 8 0 0 1 0-3.6l-2-1.5 2-3.4 2.3 1a8 8 0 0 1 3-1.8L10 2h4l.5 2.5a8 8 0 0 1 3 1.8l2.3-1 2 3.4-2 1.5c.13.58.2 1.18.2 1.8Z" /></svg>
+          </span>
+          <span>Settings</span>
+        </button>
+      </nav>
 
-      {page === "toolkit" && <Toolkit />}
-      {page === "bench" && <Bench />}
-      {page === "settings" && (
-        <SettingsPage
-          settings={settings}
-          onSave={async (patch) => {
-            const next = await api<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(patch) });
-            setSettings(next);
-            applyTheme(next.theme);
-          }}
-        />
-      )}
-      {page === "sessions" && (
-        <div className={`workspace ${aiOpen ? "" : "no-ai"} ${sideOpen ? "" : "no-side"} ${editor ? "with-edit" : ""}`}>
-          {sideOpen && <Sidebar
-            customers={customers}
-            onOpen={openSession}
-            onNewCustomer={() => setNewCust(true)}
-            onNewSession={(c) => setSessForm({ customer: c })}
-            onEditSession={(c, s) => setSessForm({ customer: c, session: s })}
-            onDuplicate={async (s) => { await api(`/api/sessions/${s.id}/duplicate`, { method: "POST" }); refresh(); }}
-            onVault={async (s) => {
-              const name = window.prompt("Save as credential", `${s.name} vault`);
-              if (!name) return;
-              await api(`/api/sessions/${s.id}/vault`, { method: "POST", body: JSON.stringify({ name }) });
-              refresh();
+      <div className={`app-body ${page === "sessions" ? "" : "no-header"}`}>
+        {/* Only active-session concerns live here. Share and Subnet act on the
+            session in front of you, so they sit beside its hostname. */}
+        {page === "sessions" && (
+          <header className="sesshdr">
+            <span className={`sh-led ${activeTab ? "" : "off"}`} />
+            <span className="sh-host">{activeTab ? activeTab.session.name : "No session open"}</span>
+            {activeTab && <span className="sh-chip">{activeTab.customerName}</span>}
+            {activeTab?.session.device_type && <span className="sh-chip">{activeTab.session.device_type}</span>}
+            <span className="sh-sp" />
+            <button
+              className={`sh-btn ${shareUrl ? "on" : ""}`}
+              onClick={toggleShare}
+              disabled={!activeTab || shareBusy}
+              title={shareUrl ? "Stop sharing this session" : "Share this session read-only"}
+            >
+              {shareBusy ? "…" : shareUrl ? "Sharing" : "Share"}
+            </button>
+            <button className="sh-btn" onClick={() => setSubnetOpen(true)}>Subnet</button>
+            <span className="sh-hint">⌘K</span>
+          </header>
+        )}
+
+        {page === "toolkit" && <Toolkit />}
+        {page === "bench" && <Bench />}
+        {page === "monitor" && <Monitor customers={customers} />}
+        {page === "settings" && (
+          <SettingsPage
+            settings={settings}
+            onSave={async (patch) => {
+              const next = await api<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(patch) });
+              setSettings(next);
+              applyTheme(next.theme);
             }}
-            onDelete={async (s) => {
-              if (!window.confirm(`Delete session ${s.name}?`)) return;
-              await api(`/api/sessions/${s.id}`, { method: "DELETE" });
-              refresh();
-            }}
-            onQuickConnect={() => setSessForm({})}
-          />}
-          {editor && (
-            <EditorDrawer
-              title={editor.title}
-              text={editor.text}
-              vendor={activeTab?.session.device_type}
-              customerId={activeTab?.session.customer_id}
-              canSend={Boolean(activeTab)}
-              onClose={() => setEditor(null)}
-              onSend={(text) => {
-                if (activeTab) sendToTab(activeTab.tabId, text.endsWith("\n") ? text : text + "\n");
-              }}
-              onAsk={(text) => askAi(`What is this?\n\n${text}`)}
-            />
-          )}
-          <section className="main">
-            <div className="tabs">
-              {tabs.map((t) => (
-                <div
-                  key={t.tabId}
-                  className={`tab ${t.tabId === active ? "active" : ""} ${t.selected ? "picked" : ""} ${dragTab === t.tabId ? "dragging" : ""}`}
-                  onClick={(e) => toggleSelect(t.tabId, e)}
-                  draggable
-                  onDragStart={(e) => { setDragTab(t.tabId); e.dataTransfer.effectAllowed = "move"; }}
-                  onDragEnd={() => setDragTab(null)}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = "move";
-                    if (!dragTab || dragTab === t.tabId) return;
-                    setTabs((prev) => {
-                      const from = prev.findIndex((x) => x.tabId === dragTab);
-                      const to = prev.findIndex((x) => x.tabId === t.tabId);
-                      if (from < 0 || to < 0 || from === to) return prev;
-                      const next = prev.slice();
-                      next.splice(to, 0, next.splice(from, 1)[0]);
-                      return next;
-                    });
-                  }}
-                  onDrop={(e) => { e.preventDefault(); setDragTab(null); }}
-                  title="Drag to reorder"
-                >
-                  <span className="dot" style={{ background: customers.find((c) => c.name === t.customerName)?.color || chrome.accent }} />
-                  {t.customerName} · {t.session.name}
-                  <button className="close" onClick={(e) => { e.stopPropagation(); closeTab(t.tabId); }}>×</button>
-                </div>
-              ))}
-              <button className="ghost" onClick={() => setSessForm({})}>+ Tab</button>
-            </div>
-            {tabs.length === 0 ? (
-              <div className="empty">
-                <div>
-                  <h2>Open a session</h2>
-                  <p>Lab simulators work offline. Real SSH remembers user/password per customer.</p>
-                </div>
-              </div>
-            ) : (
-              <div className={`panes ${layout}`}>
-                {visible.map((t) => (
-                  <div className="pane" key={t.tabId} onClick={() => setActive(t.tabId)}>
-                    <TerminalPane
-                      tab={t}
-                      theme={THEMES.find((x) => x.id === settings?.theme) || THEMES[0]}
-                      fontSize={settings?.font_size || 14}
-                      active={t.tabId === active}
-                      onEditText={(text, title) => setEditor({ text, title })}
-                      onAskAi={askAi}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-            {shareUrl && (
-              <div className="share-banner">
-                <span className="share-dot" />
-                <strong>SHARING</strong>
-                <span className="share-note">read-only · anyone with the link can watch this session</span>
-                <code>{shareUrl}</code>
-                <button className="ghost" onClick={() => navigator.clipboard?.writeText(shareUrl)}>Copy</button>
-                <button className="ghost" onClick={toggleShare} disabled={shareBusy}>Stop</button>
-              </div>
-            )}
-            {doOpen && <DoBar
-              tab={activeTab}
-              usage={usage}
-              onUsage={loadUsage}
-              onEdit={(text, title) => setEditor({ text, title })}
-            />}
-            {snipOpen && <SnippetBar
-              snippets={deviceSnips}
-              pack={snipPack}
-              onPack={setSnipPack}
-              tabId={activeTab?.tabId}
-              onAdd={() => setSnipForm({ name: "", command: "", device_types: dtype ? [dtype] : [] })}
-              onEdit={(s) => setSnipForm({ id: s.id, name: s.name, command: s.command, device_types: s.device_types })}
-              onDelete={async (s) => {
-                if (!s.id) return;
-                await api(`/api/snippets/${s.id}`, { method: "DELETE" });
+          />
+        )}
+
+        {page === "sessions" && (
+          <div className={`workspace ${aiOpen ? "" : "no-ai"} ${sideOpen ? "" : "no-side"} ${editor ? "with-edit" : ""}`}>
+            {sideOpen && <Sidebar
+              customers={customers}
+              onOpen={openSession}
+              onNewCustomer={() => setNewCust(true)}
+              onNewSession={(c) => setSessForm({ customer: c })}
+              onEditSession={(c, s) => setSessForm({ customer: c, session: s })}
+              onDuplicate={async (s) => { await api(`/api/sessions/${s.id}/duplicate`, { method: "POST" }); refresh(); }}
+              onVault={async (s) => {
+                const name = window.prompt("Save as credential", `${s.name} vault`);
+                if (!name) return;
+                await api(`/api/sessions/${s.id}/vault`, { method: "POST", body: JSON.stringify({ name }) });
                 refresh();
               }}
+              onDelete={async (s) => {
+                if (!window.confirm(`Delete session ${s.name}?`)) return;
+                await api(`/api/sessions/${s.id}`, { method: "DELETE" });
+                refresh();
+              }}
+              onQuickConnect={() => setSessForm({})}
             />}
-            {bcastOpen ? (
-            <div className="broadcast">
-              <select value={scope} onChange={(e) => setScope(e.target.value as any)}>
-                <option value="selected">Selected tabs</option>
-                <option value="customer">This customer</option>
-                <option value="all">All tabs</option>
-              </select>
-              <input
-                id="broadcast"
-                value={broadcast}
-                onChange={(e) => setBroadcast(e.target.value)}
-                placeholder="Broadcast a command — like SecureCRT chat, but faster"
-                onKeyDown={(e) => { if (e.key === "Enter") sendBroadcast(); }}
+            {editor && (
+              <EditorDrawer
+                title={editor.title}
+                text={editor.text}
+                vendor={activeTab?.session.device_type}
+                customerId={activeTab?.session.customer_id}
+                canSend={Boolean(activeTab)}
+                onClose={() => setEditor(null)}
+                onSend={(text) => {
+                  if (activeTab) sendToTab(activeTab.tabId, text.endsWith("\n") ? text : text + "\n");
+                }}
+                onAsk={(text) => askAi(`What is this?\n\n${text}`)}
               />
-              <button className="primary" onClick={sendBroadcast}>Send</button>
-              <button className="ghost" onClick={() => setBcastOpen(false)} title="Hide broadcast">\u00d7</button>
-            </div>
-            ) : (
-              <button className="broadcast-open ghost" onClick={() => setBcastOpen(true)}
-                title="Send one command to several sessions at once">
-                Broadcast \u2026
-              </button>
             )}
-            {subnetOpen && <SubnetOverlay onClose={() => setSubnetOpen(false)} />}
-          </section>
-          {aiOpen && <AiPanel tab={activeTab} ask={aiAsk} />}
-        </div>
-      )}
+            <section className="main">
+              <div
+                className={`tabs ${dropOn ? "drop-on" : ""}`}
+                onDragOver={(e) => {
+                  if (!e.dataTransfer.types.includes("application/x-nterm-session")) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "copy";
+                  setDropOn(true);
+                }}
+                onDragLeave={(e) => {
+                  if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                  setDropOn(false);
+                }}
+                onDrop={(e) => {
+                  const raw = e.dataTransfer.getData("application/x-nterm-session");
+                  setDropOn(false);
+                  if (!raw) return;
+                  e.preventDefault();
+                  try {
+                    const { customerId, sessionId } = JSON.parse(raw);
+                    const c = customers.find((x) => x.id === customerId);
+                    const sess = c?.sessions.find((x) => x.id === sessionId);
+                    if (c && sess) openSession(c, sess);
+                  } catch { /* malformed payload — ignore rather than crash the strip */ }
+                }}
+              >
+                {tabs.map((t) => (
+                  <div
+                    key={t.tabId}
+                    className={`tab ${t.tabId === active ? "active" : ""} ${t.selected ? "picked" : ""} ${dragTab === t.tabId ? "dragging" : ""}`}
+                    onClick={(e) => toggleSelect(t.tabId, e)}
+                    draggable
+                    onDragStart={(e) => { setDragTab(t.tabId); e.dataTransfer.effectAllowed = "move"; }}
+                    onDragEnd={() => setDragTab(null)}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                      if (!dragTab || dragTab === t.tabId) return;
+                      setTabs((prev) => {
+                        const from = prev.findIndex((x) => x.tabId === dragTab);
+                        const to = prev.findIndex((x) => x.tabId === t.tabId);
+                        if (from < 0 || to < 0 || from === to) return prev;
+                        const next = prev.slice();
+                        next.splice(to, 0, next.splice(from, 1)[0]);
+                        return next;
+                      });
+                    }}
+                    onDrop={(e) => { e.preventDefault(); setDragTab(null); }}
+                    title="Drag to reorder"
+                  >
+                    <span className="dot" style={{ background: customers.find((c) => c.name === t.customerName)?.color || chrome.accent }} />
+                    {t.customerName} · {t.session.name}
+                    <button className="close" onClick={(e) => { e.stopPropagation(); closeTab(t.tabId); }}>×</button>
+                  </div>
+                ))}
+                <button className="tab-add" onClick={() => setSessForm({})}>+ Tab</button>
+                {/* Layout acts on tabs, so it lives with the tabs — and unlike
+                    three loose buttons, a segmented control shows which is on. */}
+                <div className="layout-seg" role="group" aria-label="Pane layout">
+                  {(["single", "split", "quad"] as Layout[]).map((l) => (
+                    <button
+                      key={l}
+                      className={layout === l ? "on" : ""}
+                      onClick={() => setLayout(l)}
+                      aria-pressed={layout === l}
+                    >
+                      {l === "single" ? "Merge" : l === "split" ? "Split" : "Quad"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {tabs.length === 0 ? (
+                <div className="empty">
+                  <div>
+                    <h2>Open a session</h2>
+                    <p>Lab simulators work offline. Real SSH remembers user/password per customer.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className={`panes ${layout}`}>
+                  {visible.map((t) => (
+                    <div className="pane" key={t.tabId} onClick={() => setActive(t.tabId)}>
+                      <ErrorBoundary label={`${t.customerName} · ${t.session.name}`}>
+                        <TerminalPane
+                          tab={t}
+                          theme={THEMES.find((x) => x.id === settings?.theme) || THEMES[0]}
+                          fontSize={settings?.font_size || 14}
+                          fontFamily={settings?.font_family}
+                          active={t.tabId === active}
+                          onEditText={(text, title) => setEditor({ text, title })}
+                          onAskAi={askAi}
+                        />
+                      </ErrorBoundary>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {shareUrl && (
+                <div className="share-banner">
+                  <span className="share-dot" />
+                  <strong>SHARING</strong>
+                  <span className="share-note">read-only · anyone with the link can watch this session</span>
+                  <code>{shareUrl}</code>
+                  <button className="ghost" onClick={() => navigator.clipboard?.writeText(shareUrl)}>Copy</button>
+                  <button className="ghost" onClick={toggleShare} disabled={shareBusy}>Stop</button>
+                </div>
+              )}
+
+              {/* One bar where four used to stack. */}
+              <CommandBar
+                mode={barMode}
+                onMode={setBarMode}
+                tab={activeTab}
+                usage={usage}
+                onUsage={loadUsage}
+                onEdit={(text, title) => setEditor({ text, title })}
+                snippets={deviceSnips}
+                pack={snipPack}
+                onPack={setSnipPack}
+                onAddChip={() => setSnipForm({ name: "", command: "", device_types: dtype ? [dtype] : [] })}
+                onEditChip={(s) => setSnipForm({ id: s.id, name: s.name, command: s.command, device_types: s.device_types })}
+                onDeleteChip={async (s) => {
+                  if (!s.id) return;
+                  await api(`/api/snippets/${s.id}`, { method: "DELETE" });
+                  refresh();
+                }}
+                scope={scope}
+                onScope={setScope}
+                castTargets={targetTabs().length}
+                onCast={(text) => {
+                  if (!text.trim()) return;
+                  for (const t of targetTabs()) sendToTab(t.tabId, text.endsWith("\n") ? text : text + "\n");
+                }}
+              />
+
+              {subnetOpen && <SubnetOverlay onClose={() => setSubnetOpen(false)} />}
+            </section>
+            {aiOpen && <AiPanel tab={activeTab} ask={aiAsk} />}
+          </div>
+        )}
+      </div>
 
       <Palette open={palette} onClose={() => setPalette(false)} items={paletteItems} />
       {newCust && (

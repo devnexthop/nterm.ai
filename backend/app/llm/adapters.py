@@ -7,10 +7,25 @@ from . import shell
 
 
 def _mask(cidr: str) -> tuple[str, str]:
+    """Network address + mask. Right for routes and DHCP scopes."""
     net = ipaddress.ip_network(cidr, strict=False)
     if net.version != 4:
         raise ValueError("IPv4 CIDR required")
     return str(net.network_address), str(net.netmask)
+
+
+def _host_mask(cidr: str) -> tuple[str, str]:
+    """Host address + mask. Right for an interface.
+
+    An interface is configured with the address you asked for, not the network
+    it sits in — `1.1.1.1/24` must produce `ip address 1.1.1.1 255.255.255.0`.
+    Using the network address here silently gave `1.1.1.0`, which is a different
+    (and on a /24, unusable) address to the one the operator typed.
+    """
+    iface = ipaddress.ip_interface(cidr)
+    if iface.version != 4:
+        raise ValueError("IPv4 CIDR required")
+    return str(iface.ip), str(iface.network.netmask)
 
 
 def render(tool: str, args: dict, dialect: str) -> dict:
@@ -33,7 +48,7 @@ def render(tool: str, args: dict, dialect: str) -> dict:
 def _iface(args: dict, d: str) -> tuple[list[str], str, str]:
     iface = args.get("interface") or args.get("if") or "Loopback0"
     cidr = args.get("cidr") or args.get("address") or ""
-    net, mask = _mask(cidr)
+    net, mask = _host_mask(cidr)
     if d.startswith("cisco"):
         cmds = ["configure terminal", f"interface {iface}", f"ip address {net} {mask}", "no shutdown", "end"]
     elif d == "paloalto":
