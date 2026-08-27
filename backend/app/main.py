@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
-from . import mcp_client
+from . import mcp_client, updates
 from .ai_service import build_messages, chat, offline_reply
 from .analyzers import run_analyzers
 from .architect import acl_lines, config_diff, summarize, translate_rule, type7_decode, type7_encode
@@ -422,6 +422,16 @@ def put_settings(body: SettingsIn, db: Session = Depends(get_db)):
         set_value(db, "relay_token", body.relay_token.strip())
     bench_feed.save_config(db, body.bench_api_url, body.bench_mode, body.bench_api_key)
     return get_settings(db)
+
+
+@app.post("/api/version/check")
+async def version_check(force: bool = False):
+    """Ask GitHub what the newest published version is.
+
+    Manual only — see updates.py. Nothing calls this on a timer, which is what
+    lets us keep saying NTerm does not phone home.
+    """
+    return await updates.check(APP_VERSION, BUILD_SHA, force=force)
 
 
 @app.get("/api/mcp")

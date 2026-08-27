@@ -33,6 +33,10 @@
   --acc-cont-2: color-mix(in srgb, var(--acc) 28%, transparent);
   --acc-ink: var(--on-accent);
 
+  /* NTerm mark — sampled from public/icon.png (navy ground + amber N). */
+  --brand-mark-bg: #0d111c;
+  --brand-mark-accent: #ffab21;
+
   --r-sm: 8px;
   --r: 12px;
   --r-lg: 18px;
@@ -597,7 +601,12 @@ body { font-size: 14px; }
   display: flex; flex-direction: column; align-items: center;
   padding: 14px 0; gap: 4px; min-height: 0; overflow-y: auto;
 }
-.rail-mk { width: 26px; height: 26px; border-radius: 8px; display: block; margin-bottom: 14px; flex: 0 0 auto; }
+.rail-mk {
+  width: 26px; height: 26px; border-radius: 8px; display: block; margin-bottom: 14px; flex: 0 0 auto;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--brand-mark-accent) 38%, transparent),
+    0 0 12px color-mix(in srgb, var(--brand-mark-accent) 28%, transparent);
+}
 .ritem {
   width: 58px; border: none; background: none; padding: 0;
   display: flex; flex-direction: column; align-items: center; gap: 5px;
@@ -619,8 +628,45 @@ body { font-size: 14px; }
 /* ── session header ──────────────────────────────────────────────────────── */
 .sesshdr {
   display: flex; align-items: center; gap: 10px;
-  padding: 0 16px; background: var(--s0); min-width: 0;
+  padding: 0 16px; min-width: 0;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--brand-mark-accent) 16%, var(--brand-mark-bg)) 0%,
+    var(--brand-mark-bg) 32%,
+    var(--brand-mark-bg) 100%
+  );
+  border-bottom: 1px solid color-mix(in srgb, var(--brand-mark-accent) 34%, transparent);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--brand-mark-accent) 10%, transparent);
 }
+.sesshdr.live {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--ok) 28%, var(--brand-mark-bg)) 0%,
+    color-mix(in srgb, var(--ok) 10%, var(--brand-mark-bg)) 28%,
+    var(--brand-mark-bg) 100%
+  );
+  border-bottom-color: color-mix(in srgb, var(--ok) 48%, transparent);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--ok) 14%, transparent);
+}
+.sesshdr .sh-chip {
+  background: color-mix(in srgb, var(--brand-mark-accent) 11%, var(--brand-mark-bg));
+  color: color-mix(in srgb, var(--brand-mark-accent) 72%, var(--text));
+  border: 1px solid color-mix(in srgb, var(--brand-mark-accent) 24%, transparent);
+}
+.sesshdr.live .sh-chip {
+  background: color-mix(in srgb, var(--ok) 12%, var(--brand-mark-bg));
+  color: color-mix(in srgb, var(--ok) 78%, var(--text));
+  border-color: color-mix(in srgb, var(--ok) 28%, transparent);
+}
+.sesshdr .sh-btn.on {
+  background: color-mix(in srgb, var(--brand-mark-accent) 20%, transparent);
+  color: var(--brand-mark-accent);
+}
+.sesshdr.live .sh-btn.on {
+  background: color-mix(in srgb, var(--ok) 20%, transparent);
+  color: var(--ok);
+}
+.sesshdr .sh-hint { background: color-mix(in srgb, var(--text) 6%, var(--brand-mark-bg)); }
 .sh-led {
   width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto;
   background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 16%, transparent);
@@ -719,6 +765,40 @@ body { font-size: 14px; }
   border: none; background: none; border-radius: var(--r-pill);
 }
 .cbar-modes button.on { background: var(--acc); color: var(--acc-ink); font-weight: 600; }
+
+/* Do tab — AI spark instead of text. Quick twinkle so it reads as "live AI"
+   without pulling focus off the terminal. Speeds up when active or proposing. */
+.cbar-modes button.cbar-ai {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 6px 11px; min-width: 36px;
+}
+.cbar-spark {
+  display: block;
+  filter: drop-shadow(0 0 2px color-mix(in srgb, currentColor 45%, transparent));
+  animation: spark-breathe 1.7s ease-in-out infinite;
+  will-change: opacity, filter;
+}
+.cbar-spark .spark-lg { transform-origin: 12px 10.7px; }
+.cbar-spark .spark-sm {
+  transform-origin: 18.4px 18.2px;
+  opacity: .72;
+  animation: spark-twinkle 1.7s ease-in-out infinite;
+  animation-delay: .32s;
+}
+.cbar-modes button.cbar-ai.on .cbar-spark {
+  animation-duration: 1.15s;
+  filter: drop-shadow(0 0 5px color-mix(in srgb, currentColor 80%, transparent));
+}
+.cbar-modes button.cbar-ai.on .cbar-spark .spark-sm { animation-duration: 1.15s; }
+.cbar-modes button.cbar-ai.busy .cbar-spark {
+  animation-duration: .65s;
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--pending) 85%, transparent));
+}
+.cbar-modes button.cbar-ai.busy .cbar-spark .spark-sm { animation-duration: .65s; }
+.cbar-row:focus-within .cbar-spark {
+  animation-duration: 1.05s;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, currentColor 75%, transparent));
+}
 .cbar input, .cbar select {
   background: var(--s2); border: 1px solid transparent; border-radius: var(--r-pill);
   padding: 9px 16px; font-size: 13px; color: var(--text);
@@ -936,7 +1016,8 @@ input[type="checkbox"] { flex: 0 0 auto; min-width: 0; width: auto; }
 .panes.quad  .pane:has(.term-host):focus-within { box-shadow: inset 0 0 0 2px var(--acc); }
 
 @media (prefers-reduced-motion: reduce) {
-  .tab, .tabs.drop-on::after, .sh-led:not(.off) { animation: none; }
+  .tab, .tabs.drop-on::after, .sh-led:not(.off), .cbar-spark, .cbar-spark .spark-sm { animation: none; }
+  .cbar-spark { filter: drop-shadow(0 0 3px color-mix(in srgb, currentColor 55%, transparent)); }
   .session-row, .ritem, .sh-btn, .cbar-go, .primary, .ghost, .chip { transition: none; }
 }
 

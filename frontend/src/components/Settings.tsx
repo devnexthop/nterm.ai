@@ -64,6 +64,11 @@ export default function SettingsPage({
   } | null>(null);
   const [mcpForm, setMcpForm] = useState({ name: "", transport: "sse", url: "", command: "" });
   const [saved, setSaved] = useState("");
+  const [upd, setUpd] = useState<{
+    state: string; latest?: string | null; latest_commit?: string;
+    url: string; source?: string | null; error?: string; cached?: boolean;
+  } | null>(null);
+  const [updBusy, setUpdBusy] = useState(false);
   const [liveModels, setLiveModels] = useState<AiModelOption[]>([]);
   const [modelsBusy, setModelsBusy] = useState(false);
   const [modelsErr, setModelsErr] = useState("");
@@ -730,9 +735,11 @@ export default function SettingsPage({
 
         {tab === "about" && (
           <>
-            <div className="set-cap"><h1>About NTerm</h1><span className="n">ValeronLabs LLC</span></div>
+            <div className="set-cap"><h1>About NTerm</h1><span className="n">Open source · Apache-2.0</span></div>
             <p style={{ color: "var(--muted)", margin: 0, maxWidth: "66ch" }}>
-              Sessions, broadcast, syslog, TFTP, DHCP, analyzers, and a CCIE bench. Apache-2.0.
+              An open-source console for network engineers, by ValeronLabs LLC. Sessions over SSH,
+              Serial and Telnet, a credential vault, broadcast, syslog/TFTP/DHCP, offline simulators,
+              and an AI that drafts vendor CLI but never sends it without you.
             </p>
             <div className="row">
               <img src="/icon.png" alt="NTerm" style={{ width: 48, height: 48, borderRadius: 12 }} />
@@ -744,9 +751,52 @@ export default function SettingsPage({
                 </div>
               </div>
             </div>
+
+            <p className="set-lbl">Version</p>
+            <div className="sched">
+              <div className="fr"><span className="k">Running</span><span className="v">
+                <span className="stat" style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>
+                  v{settings?.version || "0.1.0"}
+                  {settings?.build ? ` · ${settings.build}` : ""}
+                </span>
+              </span></div>
+              <div className="fr"><span className="k">On GitHub</span><span className="v">
+                {upd
+                  ? <span className="stat" style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>
+                      {upd.latest || upd.latest_commit || "—"}
+                      {upd.source ? ` (${upd.source})` : ""}
+                    </span>
+                  : <span className="stat">not checked</span>}
+                {upd?.state === "current" && <span className="pill set">Up to date</span>}
+                {upd?.state === "behind" && <span className="pill" style={{ color: "var(--pending)", background: "color-mix(in srgb, var(--pending) 14%, transparent)" }}>Update available</span>}
+                {upd?.state === "ahead" && <span className="pill no">Ahead of the release</span>}
+                {upd?.state === "differs" && <span className="pill no">Different commit</span>}
+                {upd?.error && <span className="stat" style={{ color: "var(--danger)" }}>{upd.error}</span>}
+              </span></div>
+            </div>
+            <div className="row">
+              <button className="ghost" disabled={updBusy} onClick={async () => {
+                setUpdBusy(true);
+                try {
+                  setUpd(await api("/api/version/check?force=true", { method: "POST" }));
+                } catch (e: any) {
+                  setUpd({ state: "unknown", url: "", error: e.message || String(e) });
+                } finally {
+                  setUpdBusy(false);
+                }
+              }}>{updBusy ? "Checking…" : "Check for updates"}</button>
+              {upd?.state === "behind" && (
+                <a className="primary" href={upd.url} target="_blank" rel="noreferrer"
+                   style={{ textDecoration: "none" }}>Get it</a>
+              )}
+              <span className="stat">
+                NTerm never checks on its own — this only runs when you press it.
+              </span>
+            </div>
             <div className="row">
               <a className="primary" href="https://nterm.ai" target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>nterm.ai</a>
-              <a className="ghost" href="https://github.com/devnexthop/nterm.ai" target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>GitHub</a>
+              <a className="ghost" href="https://github.com/devnexthop/nterm.ai" target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>Source on GitHub</a>
+              <a className="ghost" href="https://github.com/devnexthop/nterm.ai/blob/main/CHANGELOG.md" target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>Changelog</a>
             </div>
           </>
         )}

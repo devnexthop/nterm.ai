@@ -262,7 +262,7 @@ export default function App() {
         {/* Only active-session concerns live here. Share and Subnet act on the
             session in front of you, so they sit beside its hostname. */}
         {page === "sessions" && (
-          <header className="sesshdr">
+          <header className={`sesshdr ${activeTab ? "live" : ""}`}>
             <span className={`sh-led ${activeTab ? "" : "off"}`} />
             <span className="sh-host">{activeTab ? activeTab.session.name : "No session open"}</span>
             {activeTab && <span className="sh-chip">{activeTab.customerName}</span>}

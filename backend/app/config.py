@@ -12,18 +12,29 @@ def _bundle_dir() -> Path:
 
 
 def _read_version() -> str:
-    """Single source of truth: the VERSION file at the repo root.
+    """Single source of truth: the VERSION file.
 
-    Falls back to the baked-in default when running from an installed bundle
-    where the repo layout is gone.
+    It sits at a different depth depending on how NTerm is running:
+
+        repo      backend/app/config.py  -> VERSION is 3 levels up
+        container /app/app/config.py     -> VERSION is 2 levels up
+        bundle    frozen                 -> beside the bundled modules
+
+    The original only looked 3 levels up, so every Docker image silently
+    reported the hard-coded fallback no matter what VERSION said — which made
+    the version number useless for the one job it has. Walk the candidates
+    instead of assuming one layout.
     """
-    for base in (Path(__file__).resolve().parents[2], _bundle_dir()):
+    here = Path(__file__).resolve()
+    candidates = [here.parents[i] for i in range(1, min(4, len(here.parents)))]
+    candidates.append(_bundle_dir())
+    for base in candidates:
         f = base / "VERSION"
         if f.exists():
             v = f.read_text(encoding="utf-8").strip()
             if v:
                 return v
-    return "0.1.0"
+    return "0.0.0-unknown"  # never silently claim a plausible version
 
 
 APP_VERSION = _read_version()

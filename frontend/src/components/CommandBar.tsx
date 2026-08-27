@@ -116,7 +116,30 @@ export default function CommandBar({
     <div className="cbar">
       <div className="cbar-row">
         <span className="cbar-modes" role="tablist" aria-label="Command bar mode">
-          <button role="tab" aria-selected={mode === "do"} className={mode === "do" ? "on" : ""} onClick={() => onMode("do")}>Do</button>
+          <button
+            role="tab"
+            aria-selected={mode === "do"}
+            aria-label="Do — AI actions"
+            title="Do — describe a change in English"
+            className={`cbar-ai ${mode === "do" ? "on" : ""} ${busy ? "busy" : ""}`}
+            onClick={() => onMode("do")}
+          >
+            <svg
+              className="cbar-spark"
+              viewBox="0 0 24 24"
+              width="15"
+              height="15"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path className="spark-lg" d="M12 3.2 13.6 9.1 19.5 10.7 13.6 12.3 12 18.2 10.4 12.3 4.5 10.7 10.4 9.1Z" />
+              <path className="spark-sm" d="M18.4 15.6 19 17.6 21 18.2 19 18.8 18.4 20.8 17.8 18.8 15.8 18.2 17.8 17.6Z" />
+            </svg>
+          </button>
           <button role="tab" aria-selected={mode === "cast"} className={mode === "cast" ? "on" : ""} onClick={() => onMode("cast")}>Cast</button>
           <button role="tab" aria-selected={mode === "chips"} className={mode === "chips" ? "on" : ""} onClick={() => onMode("chips")} title="One-click saved commands for this vendor">Macros</button>
         </span>
