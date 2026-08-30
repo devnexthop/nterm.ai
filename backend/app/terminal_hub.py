@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from .config import DATA_DIR
 from .crypto import decrypt
-from .device_profiles import PROFILES, SSH_ALGORITHMS
+from .device_profiles import PROFILES, ssh_connect_kwargs, ssh_hostkey_kwargs
 from .llm.act import decrypt_session_secrets
 from . import hostkeys, share
 from .auth import audit
@@ -258,7 +258,7 @@ class TerminalHub:
         # Verify the host key BEFORE any credential is sent. get_server_host_key
         # completes only the key exchange, so a changed key aborts the connection
         # while the password is still in memory and not on the wire.
-        server_key = await asyncssh.get_server_host_key(host, port)
+        server_key = await asyncssh.get_server_host_key(host, port, **ssh_hostkey_kwargs())
         try:
             fp, first_seen = hostkeys.check_and_record(
                 host, port, server_key.public_data, server_key.get_algorithm()
@@ -289,10 +289,10 @@ class TerminalHub:
             login_timeout=20,
             keepalive_interval=30,
         )
-        try:
-            conn = await asyncssh.connect(**opts, **SSH_ALGORITHMS)
-        except (ValueError, TypeError, asyncssh.Error):
-            conn = await asyncssh.connect(**opts)
+        # Offer modern suites first, then the CBC / DH-group1 / ssh-dss
+        # names old IOS still requires. Do not fall back to asyncssh defaults
+        # — those omit the legacy algorithms on purpose.
+        conn = await asyncssh.connect(**opts, **ssh_connect_kwargs())
         audit("ssh.connected", host=host, port=port,
               username=session.username or "", fingerprint=fp)
         tab.conn = conn

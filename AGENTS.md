@@ -107,5 +107,5 @@ git -C ~/gitsync/devwork-kit pull --ff-only && ~/gitsync/devwork-kit/sync-kit.sh
 Claim a row in `netconverter-project-merger/docs/ai-coordination/NOW.md` before writing —
 that lock covers every product, not just NetConverter.
 
-Version lives in `VERSION` (currently `0.1.0`). Installers (Windows EXE / Mac DMG) come
+Version lives in `VERSION` (currently `0.3.0`). Installers (Windows EXE / Mac DMG) come
 later; local test is Docker.

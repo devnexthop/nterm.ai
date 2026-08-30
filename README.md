@@ -77,7 +77,7 @@ cd nterm.ai
 ./scripts/package-desktop.sh
 ```
 
-Output: `desktop/release/NTerm-0.1.0-mac-arm64.dmg` (and `.zip`).
+Output: `desktop/release/NTerm-0.3.0-mac-arm64.dmg` (and `.zip`).
 
 Install: open the DMG, drag **NTerm** to Applications. The build is **unsigned** — first launch: right-click → **Open**, or `xattr -cr /Applications/NTerm.app`.
 
@@ -94,7 +94,7 @@ Run on a Windows machine (PyInstaller bundles are OS-specific):
 # or: cd desktop && npm run dist:win
 ```
 
-Output: `desktop/release/NTerm-0.1.0-win-x64.exe` (NSIS installer).
+Output: `desktop/release/NTerm-0.3.0-win-x64.exe` (NSIS installer).
 
 Vault: `%APPDATA%\NTerm\data\`
 

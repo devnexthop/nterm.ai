@@ -28,6 +28,7 @@ export default function TerminalPane({
   active,
   onEditText,
   onAskAi,
+  onDead,
 }: {
   tab: OpenTab;
   theme: ChromeTheme;
@@ -36,9 +37,11 @@ export default function TerminalPane({
   active: boolean;
   onEditText?: (text: string, title: string) => void;
   onAskAi?: (text: string) => void;
+  onDead?: () => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
 
   useEffect(() => {
@@ -59,41 +62,71 @@ export default function TerminalPane({
     termRef.current = term;
     terms.set(tab.tabId, term);
 
-    const ws = new WebSocket(wsUrl(tab.tabId, tab.session.id));
-    sockets.set(tab.tabId, ws);
-    ws.onmessage = (ev) => {
-      const msg = JSON.parse(ev.data);
-      if (msg.type === "output") {
-        term.write(msg.data);
-        const prev = buffers.get(tab.tabId) || "";
-        buffers.set(tab.tabId, (prev + msg.data).slice(-20000));
-      } else if (msg.type === "status") {
-        term.write(`\r\n\x1b[90m[${msg.state}${msg.message ? " · " + msg.message : ""}]\x1b[0m\r\n`);
-      }
-    };
-    ws.onclose = () => {
-      term.write("\r\n\x1b[90m[disconnected]\x1b[0m\r\n");
-    };
     term.onData((data) => {
-      if (ws.readyState === WebSocket.OPEN) {
+      const ws = wsRef.current;
+      if (ws?.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: "input", data }));
       }
     });
     const ro = new ResizeObserver(() => {
       fit.fit();
-      if (ws.readyState === WebSocket.OPEN) {
+      const ws = wsRef.current;
+      if (ws?.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
       }
     });
     ro.observe(host.current);
     return () => {
       ro.disconnect();
-      ws.close();
       sockets.delete(tab.tabId);
       terms.delete(tab.tabId);
       term.dispose();
+      termRef.current = null;
     };
   }, [tab.tabId, tab.session.id]);
+
+  useEffect(() => {
+    const term = termRef.current;
+    if (!tab.live) {
+      term?.write("\r\n\x1b[90m[logged off]\x1b[0m\r\n");
+      return;
+    }
+    let planned = false;
+    const ws = new WebSocket(wsUrl(tab.tabId, tab.session.id));
+    wsRef.current = ws;
+    sockets.set(tab.tabId, ws);
+    ws.onmessage = (ev) => {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === "output") {
+        termRef.current?.write(msg.data);
+        const prev = buffers.get(tab.tabId) || "";
+        buffers.set(tab.tabId, (prev + msg.data).slice(-20000));
+      } else if (msg.type === "status") {
+        termRef.current?.write(
+          `\r\n\x1b[90m[${msg.state}${msg.message ? " · " + msg.message : ""}]\x1b[0m\r\n`,
+        );
+      }
+    };
+    ws.onclose = () => {
+      if (wsRef.current === ws) {
+        wsRef.current = null;
+        sockets.delete(tab.tabId);
+      }
+      if (!planned) {
+        termRef.current?.write("\r\n\x1b[90m[disconnected]\x1b[0m\r\n");
+        onDead?.();
+      }
+    };
+    return () => {
+      planned = true;
+      ws.onclose = null;
+      ws.close();
+      if (wsRef.current === ws) {
+        wsRef.current = null;
+        sockets.delete(tab.tabId);
+      }
+    };
+  }, [tab.tabId, tab.session.id, tab.live, tab.connNonce]);
 
   useEffect(() => {
     termRef.current?.options && (termRef.current.options.theme = theme.term);

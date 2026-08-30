@@ -58,6 +58,10 @@ export interface OpenTab {
   session: SavedSession;
   customerName: string;
   selected: boolean;
+  /** False after Log off or a dropped socket — tab stays, session is not live. */
+  live: boolean;
+  /** Bump to force a reconnect without disposing the tab. */
+  connNonce: number;
 }
 
 export interface AiModelOption {

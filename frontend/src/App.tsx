@@ -8,7 +8,7 @@ import AiPanel from "./components/AiPanel";
 import Toolkit from "./components/Toolkit";
 import Bench from "./components/Bench";
 import SettingsPage from "./components/Settings";
-import { CustomerForm, Palette, SessionForm, SnippetForm } from "./components/Dialogs";
+import { CustomerForm, Palette, QuickConnect, SessionForm, SnippetForm } from "./components/Dialogs";
 import SubnetOverlay from "./components/SubnetOverlay";
 import EditorDrawer from "./components/EditorDrawer";
 import Monitor from "./components/Monitor";
@@ -72,6 +72,10 @@ function cellStyle(id: FrameId | "main", dock: LayoutState, editorOn: boolean): 
 
 function uid() {
   return crypto.randomUUID();
+}
+
+function makeTab(c: Customer, s: SavedSession): OpenTab {
+  return { tabId: uid(), session: s, customerName: c.name, selected: true, live: true, connNonce: 0 };
 }
 
 /** Bottom-bar visibility, remembered per browser. Each bar costs terminal
@@ -175,6 +179,7 @@ export default function App() {
     }
   }
   const [dragTab, setDragTab] = useState<string | null>(null);
+  const [quick, setQuick] = useState(false);
   const [dropOn, setDropOn] = useState(false);
   const [scope, setScope] = useState<"selected" | "customer" | "all">("selected");
   const [palette, setPalette] = useState(false);
@@ -226,7 +231,7 @@ export default function App() {
         setActive(existing.tabId);
         return t;
       }
-      const tab: OpenTab = { tabId: uid(), session: s, customerName: c.name, selected: true };
+      const tab = makeTab(c, s);
       setActive(tab.tabId);
       return [...t, tab];
     });
@@ -248,7 +253,7 @@ export default function App() {
           lastId = existing.tabId;
           continue;
         }
-        const tab: OpenTab = { tabId: uid(), session: s, customerName: c.name, selected: true };
+        const tab = makeTab(c, s);
         lastId = tab.tabId;
         next = [...next, tab];
       }
@@ -486,7 +491,16 @@ export default function App() {
                     await api("/api/folders/rename", { method: "POST", body: JSON.stringify({ customer_id: c.id, from_folder: fromFolder, to_folder: toFolder }) });
                     refresh();
                   }}
-                  onQuickConnect={() => setSessForm({})}
+                  onMoveFolder={async (fromCustomerId, fromFolder, toCustomerId, toParent) => {
+                    await api("/api/folders/move", { method: "POST", body: JSON.stringify({ from_customer_id: fromCustomerId, to_customer_id: toCustomerId, from_folder: fromFolder, to_parent: toParent }) });
+                    refresh();
+                  }}
+                  onMoveSession={async (s, toCustomerId, folder) => {
+                    await api(`/api/sessions/${s.id}`, { method: "PUT", body: JSON.stringify({ customer_id: toCustomerId, folder }) });
+                    refresh();
+                  }}
+                  onQuickConnect={() => setQuick(true)}
+                  onHide={() => patchDock("sessions", { open: false })}
                   onDockStart={() => setDragFrame("sessions")}
                 />
                 <div
@@ -622,6 +636,7 @@ export default function App() {
                             active={t.tabId === active}
                             onEditText={(text, title) => setEditor({ text, title })}
                             onAskAi={askAi}
+                            onDead={() => setTabs((prev) => prev.map((x) => x.tabId === t.tabId ? { ...x, live: false } : x))}
                           />
                         </ErrorBoundary>
                       </div>
@@ -694,7 +709,9 @@ export default function App() {
                   onDragStart={() => setDragFrame("ai")}
                   onDragEnd={() => setDragFrame(null)}
                   title="Drag to dock the AI panel"
-                >AI{activeTab ? ` · ${activeTab.session.name}` : ""}</div>
+                >AI{activeTab ? ` · ${activeTab.session.name}` : ""}
+                  <button type="button" className="ghost frame-hide" onClick={() => patchDock("ai", { open: false })}>Hide</button>
+                </div>
                 <AiPanel tab={activeTab} ask={aiAsk} />
                 <div
                   className={`splitter ${dock.ai.edge === "top" || dock.ai.edge === "bottom" ? "y" : "x"} ${dock.ai.edge}`}
@@ -713,6 +730,19 @@ export default function App() {
           onSave={async (name, color) => {
             await api("/api/customers", { method: "POST", body: JSON.stringify({ name, color, notes: "" }) });
             setNewCust(false);
+            refresh();
+          }}
+        />
+      )}
+      {quick && (
+        <QuickConnect
+          customers={customers}
+          onClose={() => setQuick(false)}
+          onConnect={async (c, s, keep) => {
+            openSession(c, s);
+            if (!keep) {
+              await api(`/api/sessions/${s.id}`, { method: "DELETE" });
+            }
             refresh();
           }}
         />

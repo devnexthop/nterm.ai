@@ -1,40 +1,69 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 
-type Action = { id: string; label: string; hint: string; prompt: (v: string, vendor: string) => string };
+type Tone = "read" | "check" | "rewrite";
+type Action = {
+  id: string;
+  label: string;
+  hint: string;
+  tone: Tone;
+  prompt: (v: string, vendor: string) => string;
+};
 
 /* Transforms return the buffer, not conversation. Each prompt says "output only
    the result" because a model that helpfully wraps config in prose produces a
    buffer you cannot send to a device. */
-const ACTIONS: Action[] = [
+const LOOK: Action[] = [
   {
-    id: "explain", label: "Explain", hint: "What does this config do?",
+    id: "explain", label: "Explain", tone: "read", hint: "What does this config do? (does not change the buffer)",
     prompt: (v, vendor) =>
       `Explain what this ${vendor || "network"} configuration does, line by line, for a network engineer. ` +
       `Be concise. Flag anything risky.\n\n${v}`,
   },
   {
-    id: "comment", label: "Comment", hint: "Annotate each block in place",
-    prompt: (v, vendor) =>
-      `Add inline comments to this ${vendor || "network"} configuration explaining each block. ` +
-      `Keep every original line exactly as-is and in order. Use the correct comment character for the platform. ` +
-      `Output ONLY the commented configuration, no prose, no code fences.\n\n${v}`,
-  },
-  {
-    id: "tidy", label: "Tidy", hint: "Normalise order and indentation",
-    prompt: (v, vendor) =>
-      `Reformat this ${vendor || "network"} configuration: consistent indentation, grouped by section, ` +
-      `duplicates removed. Do NOT change any value, address or keyword. ` +
-      `Output ONLY the configuration, no prose, no code fences.\n\n${v}`,
-  },
-  {
-    id: "review", label: "Review", hint: "Find mistakes before you send it",
+    id: "review", label: "Review", tone: "check", hint: "Findings only — syntax, missing objects, management-plane risk. Does not change the buffer.",
     prompt: (v, vendor) =>
       `Review this ${vendor || "network"} configuration for syntax errors, missing dependencies ` +
       `(an interface referenced but not defined, an ACL applied but not created), and anything that ` +
       `would drop your own management session. List findings only. If it is clean, say so.\n\n${v}`,
   },
 ];
+const CHANGE: Action[] = [
+  {
+    id: "comment", label: "Comment", tone: "rewrite", hint: "Annotate each block in place — rewrites the buffer",
+    prompt: (v, vendor) =>
+      `Add inline comments to this ${vendor || "network"} configuration explaining each block. ` +
+      `Keep every original line exactly as-is and in order. Use the correct comment character for the platform. ` +
+      `Output ONLY the commented configuration, no prose, no code fences.\n\n${v}`,
+  },
+  {
+    id: "tidy", label: "Tidy", tone: "rewrite", hint: "Normalise order and indentation — rewrites the buffer",
+    prompt: (v, vendor) =>
+      `Reformat this ${vendor || "network"} configuration: consistent indentation, grouped by section, ` +
+      `duplicates removed. Do NOT change any value, address or keyword. ` +
+      `Output ONLY the configuration, no prose, no code fences.\n\n${v}`,
+  },
+];
+
+function Spark({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path className="spark-lg" d="M12 3.2 13.6 9.1 19.5 10.7 13.6 12.3 12 18.2 10.4 12.3 4.5 10.7 10.4 9.1Z" />
+      <path className="spark-sm" d="M18.4 15.6 19 17.6 21 18.2 19 18.8 18.4 20.8 17.8 18.8 15.8 18.2 17.8 17.6Z" />
+    </svg>
+  );
+}
 
 const VENDORS = [
   ["cisco_ios", "Cisco IOS"], ["cisco_nxos", "Cisco NX-OS"], ["juniper", "Juniper"],
@@ -57,11 +86,12 @@ export default function EditorDrawer({
   const [busy, setBusy] = useState("");
   const [note, setNote] = useState("");
   const [readout, setReadout] = useState("");
+  const [readoutKind, setReadoutKind] = useState<"explain" | "review" | "">("");
   const [undo, setUndo] = useState<string | null>(null);
   const [convertTo, setConvertTo] = useState("");
   const area = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => { setBody(text); setUndo(null); setReadout(""); }, [text]);
+  useEffect(() => { setBody(text); setUndo(null); setReadout(""); setReadoutKind(""); }, [text]);
   useEffect(() => { area.current?.focus(); }, []);
 
   const lines = useMemo(() => body.split("\n").length, [body]);
@@ -93,11 +123,12 @@ export default function EditorDrawer({
   async function run(a: Action) {
     const sel = scope();
     if (!sel.value.trim()) return;
-    setBusy(a.id); setNote(""); setReadout("");
+    setBusy(a.id); setNote(""); setReadout(""); setReadoutKind("");
     try {
       const out = await ask(a.prompt(sel.value, vendor || ""));
       if (a.id === "explain" || a.id === "review") {
         setReadout(out);
+        setReadoutKind(a.id);
       } else {
         setUndo(body);
         setBody(body.slice(0, sel.start) + out + body.slice(sel.end));
@@ -153,21 +184,40 @@ export default function EditorDrawer({
       </div>
 
       <div className="editor-ai">
-        {ACTIONS.map((a) => (
-          <button key={a.id} className="chip" title={a.hint} disabled={!!busy || !body.trim()} onClick={() => run(a)}>
-            {busy === a.id ? "…" : a.label}
+        <div className="ed-ai-group" data-label="Look">
+          {LOOK.map((a) => (
+            <button key={a.id} className={`chip chip-${a.tone}`} title={a.hint} disabled={!!busy || !body.trim()} onClick={() => run(a)}>
+              {busy === a.id ? "…" : a.label}
+            </button>
+          ))}
+        </div>
+        <div className="ed-ai-group" data-label="Change">
+          {CHANGE.map((a) => (
+            <button key={a.id} className={`chip chip-${a.tone}`} title={a.hint} disabled={!!busy || !body.trim()} onClick={() => run(a)}>
+              {busy === a.id ? "…" : a.label}
+            </button>
+          ))}
+        </div>
+        <div className="ed-ai-group" data-label="Vendor">
+          <select className="ed-ai-vendor" value={convertTo} onChange={(e) => setConvertTo(e.target.value)} title="Translate to another vendor">
+            <option value="">Convert to…</option>
+            {VENDORS.filter((v) => v[0] !== vendor).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+          <button className="chip chip-go" disabled={!convertTo || !!busy} onClick={convert}>
+            {busy === "convert" ? "…" : "Go"}
           </button>
-        ))}
-        <select value={convertTo} onChange={(e) => setConvertTo(e.target.value)} title="Translate to another vendor">
-          <option value="">Convert to…</option>
-          {VENDORS.filter((v) => v[0] !== vendor).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-        </select>
-        <button className="chip" disabled={!convertTo || !!busy} onClick={convert}>
-          {busy === "convert" ? "…" : "Go"}
-        </button>
+        </div>
         <span className="spacer" />
         {undo && <button className="ghost" onClick={() => { setBody(undo); setUndo(null); setNote("Reverted"); }}>Undo</button>}
-        <button className="ghost" onClick={() => onAsk(body)} disabled={!body.trim()} title="Continue in the assist panel">Ask</button>
+        <button
+          className="ed-ask"
+          onClick={() => onAsk(body)}
+          disabled={!body.trim()}
+          title="Continue this buffer in the AI panel"
+        >
+          <Spark className="ed-spark" />
+          Ask AI
+        </button>
       </div>
 
       {note && <div className="editor-note">{note}</div>}
@@ -181,9 +231,9 @@ export default function EditorDrawer({
       />
 
       {readout && (
-        <div className="editor-readout">
+        <div className={`editor-readout ${readoutKind}`}>
           <div className="row">
-            <strong>Result</strong>
+            <strong>{readoutKind === "review" ? "Review — findings" : "Explain — what it does"}</strong>
             <span className="spacer" />
             <button className="ghost" onClick={() => setReadout("")}>Dismiss</button>
           </div>

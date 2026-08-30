@@ -1065,6 +1065,13 @@ class FolderRenameIn(BaseModel):
     to_folder: str
 
 
+class FolderMoveIn(BaseModel):
+    from_customer_id: int
+    to_customer_id: int
+    from_folder: str
+    to_parent: str = ""
+
+
 @app.get("/api/export/sessions")
 def export_sessions(db: Session = Depends(get_db)):
     """Download the customer + folder tree. Structure only — no secrets."""
@@ -1083,23 +1090,67 @@ def export_sessions_vault(body: ExportVaultIn, db: Session = Depends(get_db)):
         raise HTTPException(400, str(exc))
 
 
+def _norm_folder(s: str) -> str:
+    return (s or "").strip().strip("/")
+
+
+def _rewrite_folder(folder: str, src: str, dest: str) -> str:
+    tail = folder[len(src):].lstrip("/")
+    if dest and tail:
+        return f"{dest}/{tail}"
+    return dest or tail
+
+
 @app.post("/api/folders/rename")
 def rename_folder(body: FolderRenameIn, db: Session = Depends(get_db)):
     """Rename a site folder under one customer. Nested children keep the new prefix."""
-    src = (body.from_folder or "").strip().strip("/")
-    dst = (body.to_folder or "").strip().strip("/")
+    src = _norm_folder(body.from_folder)
+    dst = _norm_folder(body.to_folder)
     if not src:
         raise HTTPException(400, "from_folder is required")
     rows = db.query(SavedSession).filter(SavedSession.customer_id == body.customer_id).all()
     n = 0
     for row in rows:
-        folder = (row.folder or "").strip().strip("/")
+        folder = _norm_folder(row.folder)
         if folder == src or folder.startswith(src + "/"):
-            row.folder = (dst + folder[len(src):]).strip("/") if dst else folder[len(src):].lstrip("/")
+            row.folder = _rewrite_folder(folder, src, dst)[:400]
             n += 1
     db.commit()
     audit("folder.renamed", customer_id=body.customer_id, from_folder=src, to_folder=dst, sessions=n)
     return {"ok": True, "updated": n}
+
+
+@app.post("/api/folders/move")
+def move_folder(body: FolderMoveIn, db: Session = Depends(get_db)):
+    """Move a folder (and nested sessions) onto another customer or parent folder."""
+    src = _norm_folder(body.from_folder)
+    if not src:
+        raise HTTPException(400, "from_folder is required")
+    if not db.get(Customer, body.from_customer_id) or not db.get(Customer, body.to_customer_id):
+        raise HTTPException(404, "Customer not found")
+    leaf = src.rsplit("/", 1)[-1]
+    parent = _norm_folder(body.to_parent)
+    dest = f"{parent}/{leaf}" if parent else leaf
+    if body.from_customer_id == body.to_customer_id and (dest == src or dest.startswith(src + "/")):
+        raise HTTPException(400, "Cannot move a folder into itself")
+    rows = db.query(SavedSession).filter(SavedSession.customer_id == body.from_customer_id).all()
+    n = 0
+    for row in rows:
+        folder = _norm_folder(row.folder)
+        if folder == src or folder.startswith(src + "/"):
+            row.folder = _rewrite_folder(folder, src, dest)[:400]
+            row.customer_id = body.to_customer_id
+            n += 1
+    db.commit()
+    audit(
+        "folder.moved",
+        from_customer_id=body.from_customer_id,
+        to_customer_id=body.to_customer_id,
+        from_folder=src,
+        to_folder=dest,
+        sessions=n,
+    )
+    return {"ok": True, "updated": n, "to_folder": dest}
 
 
 @app.post("/api/import/preview")

@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import type { AiEvent, Customer, MenuItem, SavedSession } from "../types";
-import { api } from "../api";
+import { useMemo, useState, type DragEvent, type ReactNode } from "react";
+import type { Customer, MenuItem, SavedSession } from "../types";
 import { worksetKey } from "../layout";
 import ContextMenu from "./ContextMenu";
 
@@ -25,7 +24,7 @@ type FolderNode = {
 
 function buildTree(sessions: SavedSession[], extraFolders: string[]): FolderNode {
   const root: FolderNode = { name: "", path: "", sessions: [], children: [] };
-  const index = new Map<string, FolderNode>([[ "", root ]]);
+  const index = new Map<string, FolderNode>([["", root]]);
 
   function ensure(path: string): FolderNode {
     const n = normFolder(path);
@@ -55,12 +54,18 @@ function buildTree(sessions: SavedSession[], extraFolders: string[]): FolderNode
 }
 
 const EMPTY_KEY = "nterm.emptyFolders";
+const FOLDER_MIME = "application/x-nterm-folder";
+const SESSION_MIME = "application/x-nterm-session";
 
 function loadEmpty(): Record<string, string[]> {
   try { return JSON.parse(localStorage.getItem(EMPTY_KEY) || "{}"); } catch { return {}; }
 }
 function saveEmpty(v: Record<string, string[]>) {
   try { localStorage.setItem(EMPTY_KEY, JSON.stringify(v)); } catch { /* */ }
+}
+
+function isTreeDrag(e: DragEvent) {
+  return e.dataTransfer.types.includes(FOLDER_MIME) || e.dataTransfer.types.includes(SESSION_MIME);
 }
 
 export default function Sidebar({
@@ -76,7 +81,10 @@ export default function Sidebar({
   onVault,
   onDelete,
   onRenameFolder,
+  onMoveFolder,
+  onMoveSession,
   onQuickConnect,
+  onHide,
   onDockStart,
 }: {
   customers: Customer[];
@@ -91,24 +99,17 @@ export default function Sidebar({
   onVault: (s: SavedSession) => void;
   onDelete: (s: SavedSession) => void;
   onRenameFolder: (c: Customer, fromFolder: string, toFolder: string) => Promise<void>;
+  onMoveFolder: (fromCustomerId: number, fromFolder: string, toCustomerId: number, toParent: string) => Promise<void>;
+  onMoveSession: (s: SavedSession, toCustomerId: number, folder: string) => Promise<void>;
   onQuickConnect: () => void;
+  onHide: () => void;
   onDockStart?: () => void;
 }) {
   const [open, setOpen] = useState<Record<number, boolean>>({});
   const [foldOpen, setFoldOpen] = useState<Record<string, boolean>>({});
-  const [ai, setAi] = useState<Record<number, boolean>>({});
-  const [events, setEvents] = useState<Record<number, AiEvent[]>>({});
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [empty, setEmpty] = useState<Record<string, string[]>>(loadEmpty);
-
-  async function loadTrack(cid: number) {
-    const rows = await api<AiEvent[]>(`/api/ai/events?customer_id=${cid}`);
-    setEvents((e) => ({ ...e, [cid]: rows.slice(0, 8) }));
-  }
-
-  useEffect(() => {
-    customers.forEach((c) => { if (ai[c.id]) loadTrack(c.id); });
-  }, [customers.map((c) => c.id).join(","), Object.keys(ai).join(",")]);
+  const [dropOn, setDropOn] = useState<string | null>(null);
 
   const trees = useMemo(() => {
     const m = new Map<number, FolderNode>();
@@ -118,14 +119,48 @@ export default function Sidebar({
     return m;
   }, [customers, empty]);
 
-  function addEmptyFolder(c: Customer) {
+  function addEmptyFolder(c: Customer, parent = "") {
     const name = window.prompt("Folder name", "Site");
     if (!name?.trim()) return;
-    const path = normFolder(name);
+    const path = parent ? `${normFolder(parent)}/${normFolder(name)}` : normFolder(name);
     const next = { ...empty, [String(c.id)]: [...(empty[String(c.id)] || []), path] };
     setEmpty(next);
     saveEmpty(next);
     onSelectFolder(c, path);
+  }
+
+  async function acceptDrop(e: DragEvent, toCustomerId: number, toParent: string) {
+    e.preventDefault();
+    setDropOn(null);
+    const folderRaw = e.dataTransfer.getData(FOLDER_MIME);
+    const sessRaw = e.dataTransfer.getData(SESSION_MIME);
+    if (folderRaw) {
+      const d = JSON.parse(folderRaw) as { customerId: number; folder: string };
+      await onMoveFolder(d.customerId, d.folder, toCustomerId, toParent);
+      return;
+    }
+    if (sessRaw) {
+      const d = JSON.parse(sessRaw) as { customerId: number; sessionId: number };
+      const c = customers.find((x) => x.id === d.customerId);
+      const s = c?.sessions.find((x) => x.id === d.sessionId);
+      if (s) await onMoveSession(s, toCustomerId, toParent);
+    }
+  }
+
+  function dropHandlers(key: string, toCustomerId: number, toParent: string) {
+    return {
+      onDragOver: (e: DragEvent) => {
+        if (!isTreeDrag(e)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setDropOn(key);
+      },
+      onDragLeave: (e: DragEvent) => {
+        if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+        setDropOn((cur) => (cur === key ? null : cur));
+      },
+      onDrop: (e: DragEvent) => acceptDrop(e, toCustomerId, toParent),
+    };
   }
 
   function sessionRow(c: Customer, s: SavedSession, indent: number) {
@@ -136,15 +171,12 @@ export default function Sidebar({
         style={{ paddingLeft: 10 + indent * 12 }}
         draggable
         onDragStart={(e) => {
-          e.dataTransfer.setData(
-            "application/x-nterm-session",
-            JSON.stringify({ customerId: c.id, sessionId: s.id }),
-          );
-          e.dataTransfer.effectAllowed = "copy";
+          e.dataTransfer.setData(SESSION_MIME, JSON.stringify({ customerId: c.id, sessionId: s.id }));
+          e.dataTransfer.effectAllowed = "copyMove";
           e.currentTarget.classList.add("dragging");
         }}
         onDragEnd={(e) => e.currentTarget.classList.remove("dragging")}
-        title="Drag onto the tab strip to open"
+        title="Drag onto a folder or customer to move · onto the tab strip to open"
         onClick={() => onOpen(c, s)}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -179,9 +211,15 @@ export default function Sidebar({
           return (
             <div key={fid}>
               <div
-                className={`folder-row ${on ? "on" : ""}`}
+                className={`folder-row ${on ? "on" : ""} ${dropOn === fid ? "drop-on" : ""}`}
                 style={{ paddingLeft: 10 + indent * 12 }}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData(FOLDER_MIME, JSON.stringify({ customerId: c.id, folder: child.path }));
+                  e.dataTransfer.effectAllowed = "move";
+                }}
                 onClick={() => onSelectFolder(c, child.path)}
+                {...dropHandlers(fid, c.id, child.path)}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   setMenu({
@@ -191,6 +229,7 @@ export default function Sidebar({
                       { label: "Show this folder’s tabs", run: () => onSelectFolder(c, child.path) },
                       { label: "Open all in folder", run: () => onOpenFolder(c, child.path, collectSessions(child)) },
                       { label: "New session in folder", run: () => onNewSession(c, child.path) },
+                      { label: "New folder inside", run: () => addEmptyFolder(c, child.path) },
                       { label: "Rename folder", run: async () => {
                         const to = window.prompt("Rename folder", child.path);
                         if (!to || to === child.path) return;
@@ -245,19 +284,28 @@ export default function Sidebar({
       >
         <span>Explorer</span>
         <span className="row">
-          <button className="ghost" onClick={onQuickConnect}>Quick</button>
-          <button className="ghost" onClick={onNewCustomer}>+ New</button>
+          <button type="button" className="ghost" onClick={onQuickConnect} onMouseDown={(e) => e.stopPropagation()}>Quick</button>
+          <button type="button" className="ghost" onClick={onNewCustomer} onMouseDown={(e) => e.stopPropagation()}>+ New</button>
+          <button
+            type="button"
+            className="ghost frame-hide"
+            title="Hide explorer (⌘⇧S)"
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onClick={(e) => { e.stopPropagation(); onHide(); }}
+          >Hide</button>
         </span>
       </div>
       {customers.map((c) => {
         const shown = open[c.id] !== false;
         const tree = trees.get(c.id)!;
         const rootOn = activeWorkset === worksetKey(c.id, "");
+        const dropKey = `cust:${c.id}`;
         return (
           <div className="customer" key={c.id}>
             <header
-              className={rootOn ? "on" : ""}
+              className={`${rootOn ? "on" : ""} ${dropOn === dropKey ? "drop-on" : ""}`}
               onClick={() => { setOpen({ ...open, [c.id]: !shown }); onSelectFolder(c, ""); }}
+              {...dropHandlers(dropKey, c.id, "")}
             >
               <span className="dot" style={{ background: c.color }} />
               <strong>{c.name}</strong>
@@ -269,27 +317,6 @@ export default function Sidebar({
                 {tree.sessions.map((s) => sessionRow(c, s, 1))}
                 <div className="session-row" style={{ paddingLeft: 22 }} onClick={() => addEmptyFolder(c)}>+ folder</div>
                 <div className="session-row" style={{ paddingLeft: 22 }} onClick={() => onNewSession(c)}>+ session</div>
-                <div
-                  className="session-row ai-track-toggle"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const next = !ai[c.id];
-                    setAi({ ...ai, [c.id]: next });
-                    if (next) loadTrack(c.id);
-                  }}
-                >
-                  AI track {ai[c.id] ? "▾" : "▸"}
-                </div>
-                {ai[c.id] && (events[c.id] || []).map((ev) => (
-                  <div className="ai-track-item" key={ev.id} title={ev.commands_preview}>
-                    <span className={`dec ${ev.decision}`}>{ev.decision}</span>
-                    <span className="prompt">{ev.prompt}</span>
-                    {ev.cache_hit && <small>cached</small>}
-                  </div>
-                ))}
-                {ai[c.id] && !(events[c.id] || []).length && (
-                  <div className="ai-track-item muted">No Do-bar asks yet</div>
-                )}
               </>
             )}
           </div>
