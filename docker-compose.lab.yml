@@ -1,7 +1,12 @@
 # Optional toolkit ports for real gear (syslog / TFTP / DHCP).
 # docker compose -f docker-compose.yml -f docker-compose.lab.yml up --build
+#
+# Occupied host UDP 514 / 69 / 67 fail HERE (compose up), not on the Start
+# button. Docker will not steal them; NTerm simply does not start.
 services:
   nterm:
+    environment:
+      NTERM_LAB_PORTS: "1"
     ports:
       # 8787 is deliberately NOT re-published here. Compose appends ports from
       # an override, and "8787:8787" would bind 0.0.0.0 and silently undo the

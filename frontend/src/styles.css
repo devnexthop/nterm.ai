@@ -204,6 +204,48 @@ input:focus, select:focus, textarea:focus {
 }
 .session-row, .folder-row { border-radius: 4px; }
 .customer > header { border-radius: 4px; }
+.explorer:focus { outline: none; }
+.ex-tools { padding: 6px 10px 8px; }
+.ex-filter {
+  width: 100%; box-sizing: border-box;
+  background: var(--s1); border: 1px solid var(--outline);
+  color: var(--text); border-radius: 6px; padding: 6px 8px; font-size: 12px;
+}
+.ex-empty { color: var(--muted); font-size: 12px; padding: 8px 12px; margin: 0; }
+.ex-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ex-rename {
+  flex: 1; min-width: 0; font: inherit; color: var(--text);
+  background: var(--bg); border: 1px solid var(--acc); border-radius: 4px; padding: 1px 4px;
+}
+.session-row.sel, .folder-row.sel, .customer > header.sel { background: var(--s2); }
+.folder-row.drop-on, .customer > header.drop-on, .session-row.drop-on {
+  background: color-mix(in srgb, var(--acc) 18%, transparent);
+  box-shadow: inset 0 0 0 1px var(--acc);
+}
+.tk-note, .tk-warn {
+  max-width: 72ch; font-size: 13px; line-height: 1.45;
+  padding: 10px 12px; border-radius: 8px;
+}
+.tk-note { background: var(--s2); color: var(--muted); }
+.tk-warn {
+  background: color-mix(in srgb, var(--pending, #e6b800) 16%, transparent);
+  color: var(--text);
+}
+.st-editor { margin: 8px 0 18px; }
+.st-cust { border: 1px solid var(--outline); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+.st-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 6px 10px; border-bottom: 1px solid var(--outline);
+}
+.st-row:last-child { border-bottom: none; }
+.st-head { background: var(--s1); }
+.st-name {
+  border: 0; background: none; color: var(--text); font: inherit;
+  cursor: text; padding: 0; text-align: left;
+}
+.st-name-in { font: inherit; min-width: 120px; }
+.st-move { max-width: 220px; font-size: 12px; }
+.ctx-item.danger { color: var(--danger); }
 .cbar-slot .cbar { padding-top: 4px; flex: 1; min-height: 0; }
 /* Hiding a panel must give its space back to the terminal, not leave a gap.
    Every combination is spelled out: sidebar (260px) x editor (400px) x AI (340px). */

@@ -52,9 +52,14 @@ export default function Toolkit() {
     <div className="page">
       <h1>Architect toolkit</h1>
       <p style={{ color: "var(--muted)", maxWidth: 720 }}>
-        Built-in Kiwi / TFTPD32-style services. Enable what you need for a lab or a customer cutover:
-        syslog receiver, TFTP drop, DHCP with option 66/67/150, config analyzers, and a subnet pad.
+        Opening this page does not start anything. Syslog, TFTP and DHCP stay stopped until you
+        click Start. The subnet pad and config analyzer never bind a port.
       </p>
+      {status.exposure?.note && (
+        <p className={status.exposure.host_ports ? "tk-note" : "tk-warn"}>
+          {status.exposure.note}
+        </p>
+      )}
       {err && <p className="sev-high">{err}</p>}
 
       <div className="grid-2">
@@ -62,6 +67,7 @@ export default function Toolkit() {
           title="Syslog server"
           hint="Point `logging host <relay-ip>` / PAN syslog / Forti syslog here. Default UDP 514."
           running={status.syslog.running}
+          hostPorts={status.exposure?.host_ports}
           onStart={() => toggle("syslog", true, { port: status.syslog.port })}
           onStop={() => toggle("syslog", false)}
         >
@@ -88,6 +94,7 @@ export default function Toolkit() {
           title="TFTP server"
           hint="Drop IOS images and configs. Devices: copy tftp://&lt;relay-ip&gt;/file flash:"
           running={status.tftp.running}
+          hostPorts={status.exposure?.host_ports}
           onStart={() => toggle("tftp", true)}
           onStop={() => toggle("tftp", false)}
         >
@@ -104,6 +111,7 @@ export default function Toolkit() {
           title="DHCP server"
           hint="Lab / ZTP scopes. Option 66/67/150 included for phones and zero-touch switches. Needs UDP 67 on the wire."
           running={status.dhcp.running}
+          hostPorts={status.exposure?.host_ports}
           onStart={() => toggle("dhcp", true, { config: status.dhcp.config })}
           onStop={() => toggle("dhcp", false)}
         >
@@ -190,12 +198,15 @@ hosts ${calc.first_host} – ${calc.last_host} (${calc.usable_hosts})`}
   );
 }
 
-function ServiceCard({ title, hint, running, onStart, onStop, children }: any) {
+function ServiceCard({ title, hint, running, hostPorts, onStart, onStop, children }: any) {
+  const label = running
+    ? (hostPorts === false ? "running (container only)" : "running")
+    : "stopped";
   return (
     <div className="card">
       <div className="row">
         <h3>{title}</h3>
-        <span className={running ? "status-on" : "status-off"}>{running ? "running" : "stopped"}</span>
+        <span className={running ? "status-on" : "status-off"}>{label}</span>
         {running ? <button className="ghost" onClick={onStop}>Stop</button> : <button className="primary" onClick={onStart}>Start</button>}
       </div>
       <p>{hint}</p>

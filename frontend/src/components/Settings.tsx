@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import type { AiModelOption, AiModelsResponse, Credential, McpServer, Settings } from "../types";
 import { THEMES } from "../themes";
+import SessionTreeEditor from "./SessionTreeEditor";
 
 const CUSTOM = "__custom__";
 
@@ -640,10 +641,14 @@ export default function SettingsPage({
               <span className="n">Your tree · SecureCRT · PuTTY · ssh_config · CSV</span>
             </div>
             <p style={{ color: "var(--muted)", margin: 0, maxWidth: "66ch" }}>
-              Export the customer and folder tree you built. Structure files never include
+              The left Sessions tree is the manager — rename, move, new folder, right-click a client.
+              This page is the same tree plus file import and export. Structure files never include
               passwords. An encrypted backup can, behind a passphrase, so you can move a vault
               between your own machines.
             </p>
+            <p className="set-lbl">This machine</p>
+            <SessionTreeEditor onChanged={onImported} reloadToken={imp.done} />
+            <p className="set-lbl">Export</p>
             <div className="row">
               <button className="primary" onClick={async () => {
                 try {

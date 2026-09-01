@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ..config import DATA_DIR, DEFAULT_DHCP_PORT, DEFAULT_SYSLOG_PORT, DEFAULT_TFTP_PORT
+from .bindutil import explain_bind_error, exposure
 from .dhcp_srv import DhcpService, default_dhcp_config
 from .syslog_srv import SyslogService
 from .tftp_srv import TftpService
@@ -23,6 +24,7 @@ DEFAULTS = {
 
 def status() -> dict:
     return {
+        "exposure": exposure(),
         "syslog": {
             **DEFAULTS["syslog"],
             "enabled": syslog.running,
@@ -52,24 +54,33 @@ def status() -> dict:
 
 async def apply(name: str, spec: dict):
     bind = spec.get("bind") or "0.0.0.0"
-    if name == "syslog":
-        port = int(spec.get("port") or DEFAULT_SYSLOG_PORT)
-        if spec.get("enabled"):
-            await syslog.start(bind, port)
+    try:
+        if name == "syslog":
+            port = int(spec.get("port") or DEFAULT_SYSLOG_PORT)
+            if spec.get("enabled"):
+                await syslog.start(bind, port)
+            else:
+                await syslog.stop()
+        elif name == "tftp":
+            port = int(spec.get("port") or DEFAULT_TFTP_PORT)
+            if spec.get("enabled"):
+                await tftp.start(bind, port)
+            else:
+                await tftp.stop()
+        elif name == "dhcp":
+            port = int(spec.get("port") or DEFAULT_DHCP_PORT)
+            if spec.get("enabled"):
+                await dhcp.start(bind, port, spec.get("config") or {})
+            else:
+                await dhcp.stop()
         else:
-            await syslog.stop()
-    elif name == "tftp":
-        port = int(spec.get("port") or DEFAULT_TFTP_PORT)
-        if spec.get("enabled"):
-            await tftp.start(bind, port)
-        else:
-            await tftp.stop()
-    elif name == "dhcp":
-        port = int(spec.get("port") or DEFAULT_DHCP_PORT)
-        if spec.get("enabled"):
-            await dhcp.start(bind, port, spec.get("config") or {})
-        else:
-            await dhcp.stop()
-    else:
-        raise ValueError(f"Unknown toolkit service {name}")
+            raise ValueError(f"Unknown toolkit service {name}")
+    except OSError as exc:
+        label = {"syslog": "Syslog", "tftp": "TFTP", "dhcp": "DHCP"}.get(name, name)
+        port = int(spec.get("port") or {
+            "syslog": DEFAULT_SYSLOG_PORT,
+            "tftp": DEFAULT_TFTP_PORT,
+            "dhcp": DEFAULT_DHCP_PORT,
+        }.get(name, 0))
+        raise ValueError(explain_bind_error(exc, name=label, port=port)) from exc
     return status()[name]

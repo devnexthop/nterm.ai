@@ -57,6 +57,8 @@ class TftpService:
         transport, _ = await loop.create_datagram_endpoint(
             lambda: _TftpProtocol(self),
             local_addr=(bind, port),
+            reuse_address=False,
+            reuse_port=False,
         )
         self.transport = transport
         self.bind = bind

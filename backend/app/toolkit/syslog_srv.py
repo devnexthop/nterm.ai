@@ -105,6 +105,8 @@ class SyslogService:
         transport, _ = await loop.create_datagram_endpoint(
             lambda: _SyslogProtocol(),
             local_addr=(bind, port),
+            reuse_address=False,
+            reuse_port=False,
         )
         self.transport = transport
         self.bind = bind

@@ -69,6 +69,8 @@ class DhcpService:
             lambda: _DhcpProtocol(self),
             local_addr=(bind, port),
             allow_broadcast=True,
+            reuse_address=False,
+            reuse_port=False,
         )
         self.transport = transport
         self.bind = bind

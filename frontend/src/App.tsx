@@ -17,6 +17,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import {
   loadLayout, saveLayout, worksetKey, type Edge, type FrameId, type LayoutState,
 } from "./layout";
+import { clearTreeDrag, peekTreeDrag, readTreeDrag } from "./treeDrag";
 
 type Page = "sessions" | "toolkit" | "bench" | "monitor" | "settings";
 type Layout = "single" | "split" | "quad";
@@ -487,6 +488,23 @@ export default function App() {
                     await api(`/api/sessions/${s.id}`, { method: "DELETE" });
                     refresh();
                   }}
+                  onRenameCustomer={async (c, name) => {
+                    await api(`/api/customers/${c.id}`, {
+                      method: "PUT",
+                      body: JSON.stringify({ name, color: c.color, notes: c.notes }),
+                    });
+                    refresh();
+                  }}
+                  onDeleteCustomer={async (c) => {
+                    const n = c.sessions.length;
+                    if (!window.confirm(`Delete ${c.name}${n ? ` and ${n} session${n === 1 ? "" : "s"}` : ""}?`)) return;
+                    await api(`/api/customers/${c.id}`, { method: "DELETE" });
+                    refresh();
+                  }}
+                  onRenameSession={async (s, name) => {
+                    await api(`/api/sessions/${s.id}`, { method: "PUT", body: JSON.stringify({ name }) });
+                    refresh();
+                  }}
                   onRenameFolder={async (c, fromFolder, toFolder) => {
                     await api("/api/folders/rename", { method: "POST", body: JSON.stringify({ customer_id: c.id, from_folder: fromFolder, to_folder: toFolder }) });
                     refresh();
@@ -540,7 +558,7 @@ export default function App() {
               <div
                 className={`tabs ${dropOn ? "drop-on" : ""}`}
                 onDragOver={(e) => {
-                  if (!e.dataTransfer.types.includes("application/x-nterm-session")) return;
+                  if (peekTreeDrag()?.kind !== "session") return;
                   e.preventDefault();
                   e.dataTransfer.dropEffect = "copy";
                   setDropOn(true);
@@ -550,16 +568,14 @@ export default function App() {
                   setDropOn(false);
                 }}
                 onDrop={(e) => {
-                  const raw = e.dataTransfer.getData("application/x-nterm-session");
-                  setDropOn(false);
-                  if (!raw) return;
                   e.preventDefault();
-                  try {
-                    const { customerId, sessionId } = JSON.parse(raw);
-                    const c = customers.find((x) => x.id === customerId);
-                    const sess = c?.sessions.find((x) => x.id === sessionId);
-                    if (c && sess) openSession(c, sess);
-                  } catch { /* malformed payload — ignore rather than crash the strip */ }
+                  setDropOn(false);
+                  const payload = readTreeDrag(e.dataTransfer);
+                  clearTreeDrag();
+                  if (payload?.kind !== "session") return;
+                  const c = customers.find((x) => x.id === payload.customerId);
+                  const sess = c?.sessions.find((x) => x.id === payload.sessionId);
+                  if (c && sess) openSession(c, sess);
                 }}
               >
                 {folderTabs.map((t) => (
