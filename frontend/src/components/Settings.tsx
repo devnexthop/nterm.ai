@@ -1,8 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import type { AiModelOption, AiModelsResponse, Credential, McpServer, Settings } from "../types";
 import { THEMES } from "../themes";
 import SessionTreeEditor from "./SessionTreeEditor";
+import { datedName, saveTextFile } from "../download";
+
+type NtermTree = {
+  nterm_export?: number;
+  kind?: string;
+  customers?: { name?: string; sessions?: unknown[] }[];
+};
+
+function sessionCount(tree: NtermTree) {
+  return (tree.customers || []).reduce((n, c) => n + (c.sessions?.length || 0), 0);
+}
 
 const CUSTOM = "__custom__";
 
@@ -79,6 +90,8 @@ export default function SettingsPage({
   const [modelFilter, setModelFilter] = useState("");
   const [detected, setDetected] = useState("");
   const [tab, setTab] = useState<"ai" | "appearance" | "logging" | "bench" | "mcp" | "sharing" | "vault" | "credentials" | "import" | "about">("ai");
+  const [expMsg, setExpMsg] = useState("");
+  const importFile = useRef<HTMLInputElement>(null);
 
   const hasStoredKey = provider === "anthropic" ? !!settings?.anthropic_configured : !!settings?.openai_configured;
   const options = useMemo(() => {
@@ -199,6 +212,58 @@ export default function SettingsPage({
     });
     setApiKey("");
     setSaved("Saved on this machine.");
+  }
+
+  async function downloadSessions(kind: "structure" | "vault") {
+    setExpMsg("");
+    try {
+      let tree: NtermTree;
+      if (kind === "vault") {
+        const pass = window.prompt("Passphrase for encrypted backup (min 8 characters)");
+        if (!pass) return;
+        tree = await api<NtermTree>("/api/export/sessions/vault", {
+          method: "POST", body: JSON.stringify({ passphrase: pass }),
+        });
+      } else {
+        tree = await api<NtermTree>("/api/export/sessions");
+      }
+      const n = sessionCount(tree);
+      const filename = datedName(kind === "vault" ? "nterm-vault" : "nterm-sessions", "json");
+      const result = await saveTextFile(filename, JSON.stringify(tree, null, 2));
+      if (result === "cancelled") return;
+      setExpMsg(
+        kind === "vault"
+          ? `Saved ${filename} (encrypted). Import it below with the passphrase.`
+          : `Saved ${filename} · ${n} session${n === 1 ? "" : "s"}. Import that file below to restore.`,
+      );
+    } catch (e: unknown) {
+      window.alert(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function previewImportFile(file: File) {
+    const content = await file.text();
+    setImp((v) => ({ ...v, filename: file.name, content, rows: [], err: "", done: "", busy: true }));
+    try {
+      const r = await api<{ format: string; count: number; sessions: any[]; has_secrets?: boolean }>(
+        "/api/import/preview",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            content, format: imp.format, filename: file.name, passphrase: imp.passphrase,
+          }),
+        },
+      );
+      setImp((v) => ({
+        ...v, busy: false, content, filename: file.name, rows: r.sessions,
+        format: r.format, hasSecrets: Boolean(r.has_secrets), err: "", done: "",
+      }));
+    } catch (e: unknown) {
+      setImp((v) => ({
+        ...v, busy: false, content, filename: file.name,
+        err: e instanceof Error ? e.message : String(e),
+      }));
+    }
   }
 
   const keyHint = provider === "anthropic"
@@ -638,61 +703,48 @@ export default function SettingsPage({
           <>
             <div className="set-cap">
               <h1>Import / Export</h1>
-              <span className="n">Your tree · SecureCRT · PuTTY · ssh_config · CSV</span>
+              <span className="n">Sessions · SecureCRT · PuTTY · ssh_config · CSV</span>
             </div>
             <p style={{ color: "var(--muted)", margin: 0, maxWidth: "66ch" }}>
-              The left Sessions tree is the manager — rename, move, new folder, right-click a client.
-              This page is the same tree plus file import and export. Structure files never include
-              passwords. An encrypted backup can, behind a passphrase, so you can move a vault
-              between your own machines.
+              Download every client, folder and session as NTerm JSON, then import that file here
+              (or a SecureCRT / PuTTY / ssh_config / CSV file). Structure files never include
+              passwords. An encrypted backup can, behind a passphrase.
             </p>
-            <p className="set-lbl">This machine</p>
-            <SessionTreeEditor onChanged={onImported} reloadToken={imp.done} />
-            <p className="set-lbl">Export</p>
+            <input
+              ref={importFile}
+              type="file"
+              accept=".ini,.reg,.csv,.tsv,.txt,.conf,.json,config"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (f) void previewImportFile(f);
+              }}
+            />
             <div className="row">
-              <button className="primary" onClick={async () => {
-                try {
-                  const tree = await api<Record<string, unknown>>("/api/export/sessions");
-                  const blob = new Blob([JSON.stringify(tree, null, 2)], { type: "application/json" });
-                  const a = document.createElement("a");
-                  a.href = URL.createObjectURL(blob);
-                  a.download = "nterm-sessions.json";
-                  a.click();
-                  URL.revokeObjectURL(a.href);
-                } catch (e: any) { window.alert(e.message || String(e)); }
-              }}>Download tree</button>
-              <button className="ghost" onClick={async () => {
-                const pass = window.prompt("Passphrase for encrypted backup (min 8 characters)");
-                if (!pass) return;
-                try {
-                  const tree = await api<Record<string, unknown>>("/api/export/sessions/vault", {
-                    method: "POST", body: JSON.stringify({ passphrase: pass }),
-                  });
-                  const blob = new Blob([JSON.stringify(tree, null, 2)], { type: "application/json" });
-                  const a = document.createElement("a");
-                  a.href = URL.createObjectURL(blob);
-                  a.download = "nterm-vault.json";
-                  a.click();
-                  URL.revokeObjectURL(a.href);
-                } catch (e: any) { window.alert(e.message || String(e)); }
-              }}>Encrypted backup…</button>
+              <button className="primary" type="button" onClick={() => void downloadSessions("structure")}>
+                Download sessions
+              </button>
+              <button className="ghost" type="button" onClick={() => void downloadSessions("vault")}>
+                Encrypted backup…
+              </button>
+              <button className="ghost" type="button" onClick={() => importFile.current?.click()}>
+                Import sessions…
+              </button>
             </div>
+            {expMsg && <p className="stat ok">{expMsg}</p>}
 
-            <p className="set-lbl">Import</p>
+            <p className="set-lbl">Import options</p>
             <p style={{ color: "var(--muted)", margin: 0, maxWidth: "66ch" }}>
-              Bring sessions from NTerm, SecureCRT, PuTTY, OpenSSH or CSV. Foreign tools are
-              structure only — stored passwords are never read from those files.
+              Foreign tools are structure only — stored passwords are never read from those files.
             </p>
 
             <div className="sched">
               <div className="fr"><span className="k">File</span><span className="v">
-                <input type="file" accept=".ini,.reg,.csv,.tsv,.txt,.conf,.json,config"
-                  onChange={async (e) => {
-                    const f = e.target.files?.[0];
-                    if (!f) return;
-                    const content = await f.text();
-                    setImp((v) => ({ ...v, filename: f.name, content, rows: [], err: "", done: "" }));
-                  }} />
+                <button type="button" className="ghost" onClick={() => importFile.current?.click()}>
+                  {imp.filename || "Choose file…"}
+                </button>
+                <span className="stat">{imp.filename || "no file chosen"}</span>
               </span></div>
               <div className="fr"><span className="k">Format</span><span className="v">
                 <select value={imp.format} onChange={(e) => setImp((v) => ({ ...v, format: e.target.value }))}>
@@ -792,6 +844,9 @@ export default function SettingsPage({
                 )}
               </>
             )}
+
+            <p className="set-lbl">This machine</p>
+            <SessionTreeEditor onChanged={onImported} reloadToken={imp.done} />
           </>
         )}
 

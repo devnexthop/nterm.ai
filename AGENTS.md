@@ -39,9 +39,10 @@ in history.
 `dev/`, `resource/`, `docs/`. Created 2026-08-26 — until then they were in no git repo at
 all, single-copy on one Mac.
 
-Work on those in `~/gitsync/nterm-private`. They also remain on disk here so local runs
-and deploys still work, but this repo will never track them. **Nothing moves from the
-private repo into this one.**
+Work on those in `~/gitsync/nterm-private` only. Do not keep or edit local copies of
+`site/`, `design/`, `relay/`, `docs/`, `dev/`, or `resource/` inside this public
+checkout — they are stale traps. This repo will never track them. **Nothing moves
+from the private repo into this one.**
 
 ---
 

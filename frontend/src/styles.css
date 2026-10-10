@@ -1004,7 +1004,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--acc); }
 .fr > .v { min-width: 0; display: flex; align-items: center; gap: 11px; flex-wrap: wrap; }
 .fr > .v > input, .fr > .v > select { flex: 1; min-width: 140px; }
 .fr .stat { font-size: 11.5px; color: var(--muted); }
-.fr .stat.ok { color: var(--ok); }
+.fr .stat.ok, .stat.ok { color: var(--ok); }
 
 /* vault */
 .vault { background: var(--s2); border-radius: var(--r); overflow: hidden; }
